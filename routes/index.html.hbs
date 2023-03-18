@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="stylesheet" href="style.css">
+        <style>:root{color-scheme:light dark;}</style>
+        <title>Document</title>
+    </head>
+    <body>
+        <header id="page-header">
+            <div class="left">
+                <div class="menu-wrapper">
+                    <input type="checkbox"
+                        role="button"
+                        aria-label="main menu" 
+                        aria-controls="main-menu"
+                        {{!-- aria-expanded="false" --}}/>
+                    <ul id="main-menu">
+                        
+                    </ul>
+                </div>
+            </div>
+            <div class="right">
+                <div id="user-controls" logged-in="false">
+                    <a role="button" href="/login">
+                        <div class="pfp-wrapper">
+                            {{!-- <img class="user-pfp" src="files/res/icons/default-user.svg" alt="user-pfp"/> --}}
+                            {{{icons.default-user}}}
+                        </div>
+                        <span>Log In</span>
+                    </a>
+                    <hr>
+                    <div class="menu-wrapper">
+                        <input type="checkbox"
+                            role="button"
+                            aria-label="user-controls menu" 
+                            aria-controls="user-controls-menu"
+                            {{!-- aria-expanded="false" --}}/>
+                        <div class="bottom-align">
+                            <ul id="user-controls-menu">
+                                <li><a href="/logout">Log Out</a></li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </header>
+
+        <main>
+            <h1>Welcome to my Website</h1>
+            <section>
+                <h1><header>Things you can do here</header></h1>
+                <ul>
+                    <li>Run html-based <a href="local-replit/">replit projects</a> (useful when <a href="https://repl.it">replit</a> is down, which happens a lot)</li>
+                    <li>Browse the <a href="files/">server's filesystem</a> (view only)</li>
+                </ul>
+            </section>
+        </main>
+    </body>
+</html>

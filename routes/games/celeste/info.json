@@ -1,0 +1,9 @@
+{
+    "title": "Celeste",
+    "publisher": "Matt Makes Games",
+    "genre": "Indie",
+    "platforms": ["PC", "Switch", "PS4", "XBox One"],
+    "release_year": 2018,
+    "store-url": "https://store.steampowered.com/app/504230/Celeste/",
+    "ost-url": "/osts/albums/celeste"
+}

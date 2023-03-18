@@ -1,0 +1,139 @@
+@use "sass:map"
+
+$accent: ("hue": 202, "sat": 70%, "bright": 44%)
+$accent-color: hsl(map.get($accent, "hue"), map.get($accent, "sat"), map.get($accent, "bright"))
+
+@media (prefers-color-scheme: dark)
+    #user-controls, #user-controls-menu
+        background-color: black
+@media (prefers-color-scheme: light)
+    #user-controls, #user-controls-menu
+        background-color: white
+
+
+body
+    margin: 0
+
+.horizontal-wrapper
+    display: flex
+    flex-direction: row
+.vertical-wrapper
+    display: flex
+    flex-direction: column
+
+
+#page-header
+    display: flex
+    justify-content: space-between
+    align-items: center
+    padding:
+        top: 0.35rem
+        bottom: 0.35rem
+        left: 0.5rem
+        right: 0.5rem
+    background-color: $accent-color
+
+#user-controls
+    display: flex
+    justify-content: stretch
+    align-items: center
+    position: relative
+    padding:
+        left: 0.6rem
+        right: 0.8rem
+    border-radius: 50px
+    
+    > hr
+        width: 0
+        height: 1.75rem
+        background-color: currentColor
+        margin: 0
+        margin:
+            left: 0.5rem
+            right: 0.5rem
+        border: none
+        border-left: 1px solid currentColor
+        color: inherit
+
+    .pfp-wrapper
+        aspect-ratio: 1
+        border-radius: 50%
+        background-color: grey
+        overflow: hidden
+    .user-pfp, img, svg
+        width: 30px
+        height: 30px
+        aspect-ratio: 1
+        margin: 2px
+        font-size: 0.75rem
+
+    a
+        display: flex
+        align-items: center
+        gap: 0.5rem
+        color: inherit
+
+        span
+            padding:
+                top: 0.7rem
+                bottom: 0.7rem
+
+    // // Only show user controls when logged in
+    // &[logged-in="false"]
+    //     > hr, > .menu-wrapper
+    //         display: none
+
+    > .menu-wrapper
+        width: 16px
+        height: 16px
+    input[role="button"], button
+        width: 16px
+        height: 16px
+        margin: 0
+        background: green
+
+    // Push inner 'position: absolute' content to the bottom of the parent
+    .bottom-align // parent must be 'position: relative'
+        width: 100%
+        height: 0
+        position: absolute
+        bottom: 0
+        right: 0
+        left: 0
+        overflow: visible
+
+
+#user-controls-menu
+    position: absolute
+    top: 2px
+    left: 1rem
+    right: 0.5rem
+    margin: 0
+    padding:
+        left: 0.5rem
+        right: 0.5rem
+    border-radius: 6px
+    list-style: none
+
+// The #user-controls-menu is shown when the <input> that controls it is activated
+[aria-controls="user-controls-menu"]:checked + * #user-controls-menu
+    display: block
+[aria-controls="user-controls-menu"] + * #user-controls-menu
+    display: none
+
+    
+input[type="checkbox"][role="button"]
+    min:
+        width: 10px
+        height: 10px
+    appearance: none
+    position: relative
+    cursor: pointer
+
+    &[text]::before
+        content: attr(text)
+        position: absolute
+        top: 0
+        right: 0
+        bottom: 0
+        left: 0

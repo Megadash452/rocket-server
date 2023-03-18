@@ -1,0 +1,135 @@
+$border-radius: 6px
+$item-thumbnail-size: 72px
+
+@mixin min-size($size)
+    width: $size
+    height: $size
+    min-width: $size
+    min-height: $size
+
+@mixin block-center
+    display: block
+    margin:
+        left: auto
+        right: auto
+
+
+#thumbnail, .thumbnail
+    box-sizing: content-box
+    border: 1px solid hsl(0, 0%, 40%)
+    border-radius: $border-radius
+    overflow: hidden
+    img
+        width: 100%
+        height: 100%
+    svg.default-album-thumbnail
+        width: 50%
+        height: 50%
+        margin: 25%
+
+
+#albums
+    list-style: none
+    padding:
+        left: 40px
+        right: 40px
+
+li.error
+    $col: hsl(0, 100%, 50%) 
+    border: 1px solid $col
+    border-radius: $border-radius
+    padding: 4px
+    margin-bottom: 10px
+    gap: 6px
+    svg, img
+        @include min-size($size: 42px)
+        margin-left: 6px
+        color: $col
+    .name
+        font-size: 1.5rem
+    
+li.item
+    border: 1px solid
+    border-radius: $border-radius * 1.5
+    padding: 8px
+    margin-bottom: 16px
+    gap: 6px
+
+    a
+        align-items: center
+        gap: 6px
+        border-radius: $border-radius
+        padding:
+            top: 4px
+            bottom: 4px
+            left: 4px
+            right: 12px
+        text-decoration: none
+        color: inherit
+        background-color: transparent
+        transition: background-color 0.5s
+        &:hover
+            background-color: hsla(0, 0%, 0%, 50%)
+            .name
+                text-decoration-line: underline
+
+    .thumbnail
+        @include min-size($size: $item-thumbnail-size)
+
+    .title-wrapper
+        display: flex
+        flex-direction: column
+        justify-content: space-evenly
+    
+    .name
+        font-size: 1.5rem
+        font-family: sans-serif
+    .artists-wrapper
+        font-size: 0.9rem
+
+    .more
+        height: $item-thumbnail-size
+        max-height: $item-thumbnail-size
+        flex-wrap: wrap
+
+
+// li.error
+//     display
+
+$scale: 4.5
+audio
+    @include block-center
+    width: $item-thumbnail-size * $scale * 1.5
+
+#thumbnail
+    @include min-size($size: $item-thumbnail-size * $scale)
+    @include block-center
+    border-radius: $border-radius * $scale / 2
+    margin-bottom: 6px
+
+#name, #artists
+    width: fit-content
+    margin: 0
+    @include block-center
+
+#remixes
+    margin: 0
+    display: inline-block
+
+#more
+    width: fit-content
+    margin: 0
+    margin-top: 6px
+    @include block-center
+    display: flex
+    gap: 6px
+    // Flex Separator
+    > *:not(:first-child)::before
+        content: ''
+        width: 2px
+        height: 1em
+        margin-right: 6px
+        display: inline-block
+        position: relative
+        top: 2px
+        background-color: hsl(0, 0%, 40%)
