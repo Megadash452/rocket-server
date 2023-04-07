@@ -8,8 +8,8 @@ use rocket::{
 };
 use super::*;
 
-static INFO_FILE_NAME: &str = "info.json";
-static ALBUM_COVER_NAME: &str = "thumbnail";
+pub static INFO_FILE_NAME: &str = "info.json";
+pub static THUMB_NAME: &str = "thumbnail";
 
 
 // #[get("/")]
@@ -78,6 +78,22 @@ pub trait FromFile: Sized {
     type Error;
     /// path must be a file, relative to server root.
     fn read_file(file: &Path) -> Result<Self, Self::Error>;
-    /// Returns [`true`] if file should be skipped.
+    /// Returns [`false`] if file should be skipped.
     fn filter_file(file: &DirEntry) -> bool;
+}
+
+#[macro_export]
+macro_rules! impl_ord {
+    ($st:path, $field:tt) => {
+        impl PartialOrd for $st {
+            fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+                self.$field.partial_cmp(&other.$field)
+            }
+        }
+        impl Ord for $st {
+            fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+                self.$field.cmp(&other.$field)
+            }
+        }
+    };
 }

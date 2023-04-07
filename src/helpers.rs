@@ -1,5 +1,4 @@
 use std::{path::{PathBuf, Path}, fmt::{Display, Write}, process::Command};
-
 use chrono::Duration;
 
 
@@ -47,6 +46,7 @@ pub fn find_files_start(search_dir: impl AsRef<Path>, start: &str) -> Vec<PathBu
         .map(|o|
             command_output(o.stdout)
                 .split('\n')
+                .filter(|s| !s.is_empty())
                 .map(|s| PathBuf::from(s))
                 .collect::<Vec<_>>()
         )
@@ -54,17 +54,10 @@ pub fn find_files_start(search_dir: impl AsRef<Path>, start: &str) -> Vec<PathBu
 }
 
 pub fn display_separated<T: Display>(things: impl AsRef<[T]>, separator: &str) -> String {
-    let mut buf = String::new();
-    let things = things.as_ref();
-
-    for (i, thing) in things.iter().enumerate() {
-        write!(buf, "{thing}").unwrap();
-        if i + 1 < things.len() {
-            write!(buf, "{separator}").unwrap();
-        }
-    }
-
-    buf
+    things.as_ref().iter()
+        .map(T::to_string)
+        .intersperse(separator.to_string())
+        .collect()
 }
 
 pub fn display_duration(secs: u64) -> String {

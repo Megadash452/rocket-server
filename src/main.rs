@@ -1,4 +1,5 @@
 #![feature(is_some_and)]
+#![feature(iter_intersperse)]
 
 mod file_browser;
 mod helpers;
@@ -71,8 +72,6 @@ async fn favicon() -> io::Result<File> {
     File::open("./res/icons/favicon.ico").await
 }
 // TODO: have one that detects file extension and forards it to the right handler (e.g. "index.html" -> index_template, "file" -> regular file)
-
-
 
 // #[catch(default)]
 // fn default_catcher(status: Status, _request: &Request) -> Template {

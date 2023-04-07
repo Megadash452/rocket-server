@@ -10,7 +10,7 @@ static EXCLUDED_DIRS: &[&str] = &[
 ];
 
 /// Allows the user to browse the server's filesystem.
-#[get("/<path..>", rank=1)]
+#[get("/<path..>", rank=4)]
 pub async fn dir_browser(path: PathBuf) -> ResResult {
     if crate::helpers::eq_one_of(path.to_string_lossy().as_ref(), EXCLUDED_DIRS) {
         return ResResult::Err(Status::Forbidden)

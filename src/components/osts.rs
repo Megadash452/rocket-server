@@ -1,10 +1,8 @@
 use std::path::PathBuf;
 use yew::prelude::*;
-use super::{Document, UserInfo, load_svg};
+use super::{Document, UserInfo, load_svg, item_error};
 use crate::helpers::display_separated;
-use crate::archives::{
-    osts::{AlbumInfo, SongInfo, SongCover, ALBUMS_PATH}
-};
+use crate::archives::osts::{AlbumInfo, SongInfo, SongCover, ALBUMS_PATH};
 pub use crate::components::UserInfo as AlbumBrowserProps;
 
 
@@ -18,7 +16,7 @@ pub fn AlbumBrowser(props: &UserInfo) -> Html {
                 let (albums, errors) = crate::archives::read_all_dirs::<AlbumInfo>(&*ALBUMS_PATH);
 
                 errors.into_iter()
-                    .map(|(dir_name, error)| error_html(dir_name, error.to_string()))
+                    .map(|(dir_name, error)| item_error(dir_name, error.to_string()))
                     .chain(albums.into_iter()
                         .map(album_browser_item))
                     .collect::<Html>()
@@ -99,7 +97,7 @@ pub fn Album(props: &AlbumProps) -> Html {
                 let (songs, errors) = crate::archives::read_all_files::<SongInfo>(&*ALBUMS_PATH.join(&props.album.dir_name));
 
                 errors.into_iter()
-                    .map(|(file_name, error)| error_html(file_name, error.to_string()))
+                    .map(|(file_name, error)| item_error(file_name, error.to_string()))
                     .chain(songs.into_iter()
                         .map(song_item))
                     .collect::<Html>()
@@ -171,18 +169,6 @@ pub fn Song(props: &SongProps) -> Html {
     }
 }
 
-
-fn error_html(obj_name: String, error: String) -> Html {
-    html!{
-        <li class="error horizontal-wrapper">
-            { load_svg("warning") }
-            <div class="vertical-wrapper">
-                <span class="name">{obj_name}</span>
-                <span class="error">{error}</span>
-            </div>
-        </li>
-    }
-}
 
 fn album_cover(path: &Option<PathBuf>) -> Html {
     match path {

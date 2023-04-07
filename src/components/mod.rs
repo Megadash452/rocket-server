@@ -165,6 +165,18 @@ pub fn load_svg(name: impl AsRef<str>) -> Html {
     }))
 }
 
+fn item_error(obj_name: String, error: String) -> Html {
+    html!{
+        <li class="error horizontal-wrapper">
+            { load_svg("warning") }
+            <div class="vertical-wrapper">
+                <span class="name">{obj_name}</span>
+                <span class="error">{error}</span>
+            </div>
+        </li>
+    }
+}
+
 
 #[derive(Properties, Default, PartialEq)]
 pub struct DocProps {

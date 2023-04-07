@@ -26,7 +26,7 @@ pub struct AlbumInfo {
 }
 impl AlbumInfo {
     pub fn find_cover_file(album_dir_name: &str) -> Option<PathBuf> {
-        find_files_start(ALBUMS_PATH.join(album_dir_name), ALBUM_COVER_NAME).into_iter().next()
+        find_files_start(ALBUMS_PATH.join(album_dir_name), THUMB_NAME).into_iter().next()
     }
 }
 impl FromDir for AlbumInfo {
@@ -57,7 +57,7 @@ impl FromDir for AlbumInfo {
             let file_name = file.file_name();
             let file_name = file_name.to_string_lossy();
 
-            if file_name.starts_with(ALBUM_COVER_NAME) {
+            if file_name.starts_with(THUMB_NAME) {
                 thumbnail_path = Some(path.join(file.file_name()));
                 continue;
             }
@@ -91,16 +91,7 @@ impl FromDir for AlbumInfo {
         })
     }
 }
-impl PartialOrd for AlbumInfo {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.name.partial_cmp(&other.name)
-    }
-}
-impl Ord for AlbumInfo {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.name.cmp(&other.name)
-    }
-}
+impl_ord!(AlbumInfo, name);
 
 #[derive(Debug, Error)]
 pub enum AlbumReadError {
@@ -112,13 +103,6 @@ pub enum AlbumReadError {
     ArtistFields
 }
 
-
-#[derive(Debug, PartialEq, Eq)]
-pub enum SongCover {
-    Some(PathBuf),
-    UseAlbum,
-    None
-}
 
 #[derive(Properties, PartialEq, Eq)]
 pub struct SongInfo {
@@ -138,7 +122,7 @@ impl FromFile for SongInfo {
     fn filter_file(file: &DirEntry) -> bool {
         let file = file.file_name();
         file != INFO_FILE_NAME
-        && !file.to_string_lossy().starts_with(ALBUM_COVER_NAME)
+        && !file.to_string_lossy().starts_with(THUMB_NAME)
     }
     fn read_file(path: &Path) -> Result<Self, Self::Error> {
         let album_dir_name = path.parent().unwrap().file_name().unwrap().to_string_lossy().to_string();
@@ -254,16 +238,7 @@ impl FromFile for SongInfo {
         })
     }
 }
-impl PartialOrd for SongInfo {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.title.partial_cmp(&other.title)
-    }
-}
-impl Ord for SongInfo {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.title.cmp(&other.title)
-    }
-}
+impl_ord!(SongInfo, title);
 
 #[derive(Debug, Error)]
 pub enum SongReadError {
@@ -275,6 +250,13 @@ pub enum SongReadError {
     Json(serde_json::Error),
     #[error("Output does not contain Song's length")]
     NoLength
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum SongCover {
+    Some(PathBuf),
+    UseAlbum,
+    None
 }
 
 
