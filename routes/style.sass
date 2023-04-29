@@ -6,9 +6,13 @@ $accent-color: hsl(map.get($accent, "hue"), map.get($accent, "sat"), map.get($ac
 @media (prefers-color-scheme: dark)
     #user-controls, #user-controls-menu
         background-color: black
+    a[target="_blank"]::after
+        filter: invert(95%)
 @media (prefers-color-scheme: light)
     #user-controls, #user-controls-menu
         background-color: white
+    a[target="_blank"]::after
+        filter: invert(5%)
 
 
 body
@@ -20,6 +24,14 @@ body
 .vertical-wrapper
     display: flex
     flex-direction: column
+
+a[target="_blank"]::after
+    content: ''
+    width: 0.85em
+    height: 0.85em
+    display: inline-block
+    margin-left: 4px
+    background: url("/files/res/icons/external.svg") center / contain no-repeat
 
 
 #page-header
@@ -67,7 +79,7 @@ body
         margin: 2px
         font-size: 0.75rem
 
-    a
+    > a
         display: flex
         align-items: center
         gap: 0.5rem

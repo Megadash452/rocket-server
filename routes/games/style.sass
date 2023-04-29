@@ -1,0 +1,30 @@
+@use "../common"
+
+#info
+    margin-left: 2.5%
+    margin-right: 2.5%
+    margin-bottom: 1rem
+    justify-content: start
+    align-items: center
+    gap: 12px
+
+    > .vertical-wrapper
+        height: 100%
+        gap: 8px
+
+$scale: 4
+#thumbnail
+    @include common.min-size($size: common.$item-thumbnail-size * $scale)
+    border-radius: common.$border-radius * $scale / 2
+    // border: none
+    margin-bottom: 6px
+
+#title-wrapper
+    height: max-content
+
+#more
+    flex: 1 0 auto
+
+#title-wrapper, #more
+    > *
+        margin: 0
