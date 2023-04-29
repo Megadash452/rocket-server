@@ -26,7 +26,7 @@ pub struct AlbumInfo {
 }
 impl AlbumInfo {
     pub fn find_cover_file(album_dir_name: &str) -> Option<PathBuf> {
-        find_files_start(ALBUMS_PATH.join(album_dir_name), THUMB_NAME).into_iter().next()
+        find_files_start(ALBUMS_PATH.join(album_dir_name), THUMB_NAME, true).into_iter().next()
     }
 }
 impl FromDir for AlbumInfo {
@@ -161,7 +161,8 @@ impl FromFile for SongInfo {
             // Find if a Cover Images was exported (if any)
             let mut exports = find_files_start(
                 &*COVER_EXPORTS_PATH,
-                &path.file_name().unwrap().to_string_lossy().to_string()
+                &path.file_name().unwrap().to_string_lossy().to_string(),
+                true
             ).into_iter();
             // Note: Song could have multiple covers
             match exports.next() {

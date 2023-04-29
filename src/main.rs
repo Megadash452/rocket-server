@@ -1,4 +1,3 @@
-#![feature(is_some_and)]
 #![feature(iter_intersperse)]
 
 mod file_browser;
