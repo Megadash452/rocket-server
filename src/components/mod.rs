@@ -2,7 +2,7 @@ pub mod authenticate;
 pub mod osts;
 pub mod games;
 
-use std::{path::PathBuf, process::Command};
+use std::{path::{PathBuf, Path}, process::Command};
 use once_cell::sync::Lazy;
 use rocket::{
     // tokio,
@@ -163,6 +163,19 @@ pub fn load_svg(name: impl AsRef<str>) -> Html {
         Some(svg) => crate::helpers::command_output(svg),
         None => r#"<img alt="SVG"/>"#.to_string()
     }))
+}
+
+fn text_file(path: &Path) -> Html {
+    let content = String::from_utf8_lossy(
+        &std::fs::read(path).expect("Could not read file")
+    ).to_string();
+
+    if path.extension().is_some_and(|ext| ext == "md") {
+        // Markdown files can be compiled to HTML.
+        Html::from_html_unchecked(markdown::to_html(&content).into())
+    } else {
+        html! { <code>{ content }</code> }
+    }
 }
 
 fn item_error(obj_name: String, error: String) -> Html {

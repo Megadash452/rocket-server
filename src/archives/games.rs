@@ -4,7 +4,17 @@ use super::*;
 use crate::components::games as components;
 
 pub static GAMES_PATH: Lazy<PathBuf> = Lazy::new(|| PathBuf::from("./routes/games/"));
+pub static PLATFORM_PREFIX: &str = "plat-";
 
+
+#[derive(Debug)]
+pub struct PlatFile {
+    /// Path up to the game directory. (e.g. celeste/plat-linux/celeste.zip).
+    pub path: PathBuf,
+    pub plat: String,
+    /// Assumes default architecture of system (e.g. Windows and Linux are `x64`).
+    pub arch: Option<String>
+}
 
 #[derive(Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
@@ -23,6 +33,13 @@ pub struct GameInfo {
     pub thumbnail_file_name: String
 }
 impl GameInfo {
+    pub fn server_path(&self) -> PathBuf {
+        GAMES_PATH.join(&self.dir_name)
+    }
+    pub fn url(&self) -> PathBuf {
+        PathBuf::from("/games/").join(&self.dir_name)
+    }
+
     pub fn store_name(mut url: &str) -> &'static str {
         url = url.split_once("://").map(|(_, url)| url).unwrap_or(url);
         url = url.split_once('/').map(|(domain, _)| domain).unwrap_or(url);
@@ -32,6 +49,67 @@ impl GameInfo {
             "store.epicgames.com" => "Epic Games",
             _ => "Unknown Store"
         }
+    }
+    /// Gets the paths of the game's binary for each platform.
+    /// [`Vec`] could be empty.
+    pub fn binaries(&self) -> Vec<PlatFile> {
+        // Search the directories that have files specific to a platform (e.g. Windows and Linux)
+        self.plat_dirs()
+            .filter_map(|(dir, plat, arch)|{
+                let file = dir.path().read_dir()
+                    .expect("can't read platform dir")
+                    .filter_map(Result::ok)
+                    .filter(|entry| entry.metadata().ok().is_some_and(|m| m.is_file()))
+                    // The game file should have the same base name as the game's directory.
+                    .filter(|entry| entry.path().file_prefix().is_some_and(|base_name| base_name.to_string_lossy() == self.dir_name.as_str()))
+                    .next()?
+                    .file_name();
+                Some(PlatFile { path: PathBuf::from(&self.dir_name).join(dir.file_name()).join(file), plat, arch })
+            })
+            .collect()
+    }
+    /// like binaries but for all other files
+    pub fn platformed_files(&self) -> HashMap<String, Vec<PlatFile>> {
+        let mut files: HashMap<String, Vec<PlatFile>> = HashMap::new();
+
+        for (dir, plat, arch) in self.plat_dirs() {
+            for file in dir.path()
+                .read_dir()
+                .expect("can't read platform dir")
+                .filter_map(Result::ok)
+                .filter(|entry| entry.metadata().ok().is_some_and(|m| m.is_file()))
+                // Exclude game binary
+                .filter(|entry| entry.path().file_prefix().is_some_and(|base_name| base_name.to_string_lossy() != self.dir_name.as_str()))
+            {
+                let name = file.file_name().to_string_lossy().to_string();
+                let new_file = PlatFile {
+                    path: PathBuf::from(&self.dir_name).join(dir.file_name()).join(file.file_name()),
+                    plat: plat.clone(),
+                    arch: arch.clone()
+                };
+
+                if let Some(files) = files.get_mut(&name) {
+                    files.push(new_file)
+                } else {
+                    files.insert(name, vec![new_file]);
+                }
+            }
+        }
+
+        files
+    }
+
+    /// Get the **directories (`0`)** that contain files specific to a **platform (`1`)** or **architecture (`2`)**.
+    /// Are in this format: `plat-{plat}[-{arch}]`.
+    fn plat_dirs(&self) -> impl Iterator<Item = (DirEntry, String, Option<String>)> {
+        self.server_path().read_dir()
+            .expect("can't read game dir")
+            .filter_map(Result::ok)
+            .filter(|entry| entry.metadata().ok().is_some_and(|m| m.is_dir()))
+            .filter_map(|entry|
+                plat_from_dir_name(&entry.file_name().to_string_lossy().to_string())
+                    .map(|(plat, arch)| (entry, plat, arch))
+            )
     }
 }
 impl FromDir for GameInfo {
@@ -73,6 +151,14 @@ pub enum GameReadError {
     NoPlatform,
     #[error("Game has no thumbnail image")]
     NoThumbnail
+}
+
+fn plat_from_dir_name(dir_name: &str) -> Option<(String, Option<String>)> {
+    dir_name.strip_prefix(PLATFORM_PREFIX)
+        .map(|rest| match rest.split_once("-") {
+            Some((plat, arch)) => (plat.to_string(), Some(arch.to_string())),
+            None => (rest.to_string(), None )
+        })
 }
 
 

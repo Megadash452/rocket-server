@@ -1,3 +1,4 @@
+#![feature(path_file_prefix)]
 #![feature(iter_intersperse)]
 
 mod file_browser;
