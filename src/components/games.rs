@@ -84,11 +84,17 @@ pub fn Game(props: &GameProps) -> Html {
                         }
                     </div>
                 </div>
-                <div id="game-download">{ plat_file("Download", props.game.binaries()) }</div>
+                <div id="game-download">
+                    if let Some(files) = props.game.binaries() {{
+                        plat_file("Download", files)
+                    }} else {
+                        { "No Downloads available" }
+                    }
+                </div>
             </div>
             <div id="content">
                 <details open=true id="readme">
-                    <summary>{ load_svg("text-file") }{ "README" }</summary>
+                    <summary><span>{ load_svg("info") }{ "README" }</span></summary>
                     {
                         crate::helpers::find_files_start(props.game.server_path(), "readme", false)
                             .pop()
@@ -148,20 +154,19 @@ fn plat_file(name: &str, files: Vec<PlatFile>) -> Html {
         { load_svg("file") }
         <span class="name">{ &name }</span>
 
-        if files.is_empty() {
-            { "No download available" }
-        } else if files.len() == 1 {
-            <div class="download one">
-                { load_svg("download") }
-                <a href={ files[0].path.display().to_string() }>{ load_svg(&files[0].plat) }</a>
+        // Vec is never empty
+        if files.len() == 1 {
+            <div class="download single">
+                <div class="icon-wrapper">{ load_svg("download") }</div>
+                <a href={ files[0].path.display().to_string() } platform={files[0].plat.clone()} arch={files[0].arch.clone()}>{ load_svg(&files[0].plat) }</a>
             </div>
         } else {
-            <div class="downloads">
-                { load_svg("download") }
+            <div class="download">
+                <span class="icon-wrapper">{ load_svg("download") }</span>
                 <span class="platforms">{
                     files.into_iter()
                         .map(|file| html! {
-                            <a href={ file.path.display().to_string() }>{ load_svg(&file.plat) }</a>
+                            <a href={ file.path.display().to_string() } platform={file.plat.clone()} arch={file.arch.clone()}>{ load_svg(&file.plat) }</a>
                         })
                         .collect::<Html>()
                 }</span>

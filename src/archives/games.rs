@@ -50,11 +50,13 @@ impl GameInfo {
             _ => "Unknown Store"
         }
     }
+    
     /// Gets the paths of the game's binary for each platform.
-    /// [`Vec`] could be empty.
-    pub fn binaries(&self) -> Vec<PlatFile> {
+    /// Returns [`None`] if no file exists with the same base-name as the game's directory.
+    /// THe [`Vec`] in [`Some`] is never empty.
+    pub fn binaries(&self) -> Option<Vec<PlatFile>> {
         // Search the directories that have files specific to a platform (e.g. Windows and Linux)
-        self.plat_dirs()
+        let rtrn = self.plat_dirs()
             .filter_map(|(dir, plat, arch)|{
                 let file = dir.path().read_dir()
                     .expect("can't read platform dir")
@@ -66,9 +68,16 @@ impl GameInfo {
                     .file_name();
                 Some(PlatFile { path: PathBuf::from(&self.dir_name).join(dir.file_name()).join(file), plat, arch })
             })
-            .collect()
+            .collect::<Vec<_>>();
+
+        if rtrn.is_empty() {
+            None
+        } else {
+            Some(rtrn)
+        }
     }
-    /// like binaries but for all other files
+    /// like binaries but for all other files.
+    /// [`Vec`] is never empty.
     pub fn platformed_files(&self) -> HashMap<String, Vec<PlatFile>> {
         let mut files: HashMap<String, Vec<PlatFile>> = HashMap::new();
 
@@ -100,7 +109,7 @@ impl GameInfo {
     }
 
     /// Get the **directories (`0`)** that contain files specific to a **platform (`1`)** or **architecture (`2`)**.
-    /// Are in this format: `plat-{plat}[-{arch}]`.
+    /// [`DirEntry`] (0) are direcotries with names in this format: `plat-{plat}[-{arch}]`.
     fn plat_dirs(&self) -> impl Iterator<Item = (DirEntry, String, Option<String>)> {
         self.server_path().read_dir()
             .expect("can't read game dir")
