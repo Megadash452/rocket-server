@@ -2,6 +2,7 @@ use std::{
     io,
     path::{PathBuf, Path},
     fmt::{Display, Write},
+    fs::{Metadata, DirEntry},
     process::Command
 };
 use chrono::Duration;
@@ -38,6 +39,17 @@ pub fn resolve_symlink(mut link: PathBuf) -> io::Result<PathBuf> {
         link = std::fs::read_link(link)?
     }
     Ok(link)
+}
+
+pub fn resolve_entry(entry: DirEntry) -> Option<(PathBuf, Metadata)> {
+    let mut path = entry.path();
+    let mut meta = entry.metadata().ok()?;
+    
+    if meta.is_symlink() {
+        path = crate::helpers::resolve_symlink(path).ok()?;
+        meta = path.metadata().ok()?;
+    }
+    Some((path, meta))
 }
 
 /// Removes the trailing `'\n'` from a [`Command`]'s output (stdout or stderr).

@@ -35,7 +35,7 @@ $scale: 4
         left: 2.5%
         right: 2.5%
 
-#readme
+.readme
     margin-bottom: 1rem
     border: 1px solid #555
     border-radius: 8px
@@ -56,34 +56,41 @@ $scale: 4
             // border: 1px solid #555
             border-radius: 8px
 
+details :last-child
+    margin: 0
+
 li.item
     display: flex
     align-items: center
     list-style: none
 
-div.download
+.download
     $size: 32px
     $icon-size: 70%
     $gap: 2px
     $duration: 100ms
-    width: fit-content
-    display: flex
-    border-radius: $size
     background: #766ea2
+    
+    &:is(div)
+        width: fit-content
+        display: flex
+        border-radius: $size
 
-    > .icon-wrapper, a
+    > .icon-wrapper, &:is(a), a
         width: $size
         height: $size
         border-radius: 50%
+        display: inline-block
         color: #000
-        svg, img
-            width: $icon-size
-            height: $icon-size
-            margin: (100% - $icon-size) / 2
 
     > .icon-wrapper
         margin-right: 0px
         transition: margin $duration
+
+    svg, img
+        width: $icon-size
+        height: $icon-size
+        margin: (100% - $icon-size) / 2
     
     .platforms
         width: 0

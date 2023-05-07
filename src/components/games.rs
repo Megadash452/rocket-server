@@ -1,9 +1,11 @@
-use std::path::PathBuf;
+use std::fs::Metadata;
+use std::path::{PathBuf, Path};
+use std::process::Command;
 use yew::prelude::*;
-use crate::archives::{THUMB_NAME, INFO_FILE_NAME};
+use crate::archives::{THUMB_NAME, INFO_FILE_NAME, Url};
 use crate::components::{load_svg, text_file};
-use crate::helpers::display_separated;
-use crate::archives::games::{GameInfo, PlatFile, GAMES_PATH};
+use crate::helpers::{display_separated, command_output};
+use crate::archives::games::{GameInfo, PlatFile, GAMES_PATH, PLATFORM_PREFIX};
 use super::{Document, UserInfo, item_error};
 
 
@@ -14,11 +16,11 @@ pub fn GamesBrowser(props: &UserInfo) -> Html {
             <link rel="stylesheet" href="/games/style.css"/>
             <h1>{ "Games" }</h1>
             <ul id="albums">{{
-                let (albums, errors) = crate::archives::read_all_dirs::<GameInfo>(&*GAMES_PATH);
+                let (games, errors) = crate::archives::read_all_dirs::<GameInfo>(&*GAMES_PATH);
 
                 errors.into_iter()
                     .map(|(dir_name, error)| item_error(dir_name, error.to_string()))
-                    .chain(albums.into_iter()
+                    .chain(games.into_iter()
                         .map(games_browser_item))
                     .collect::<Html>()
             }}</ul>
@@ -87,24 +89,29 @@ pub fn Game(props: &GameProps) -> Html {
                 <div id="game-download">
                     if let Some(files) = props.game.binaries() {{
                         plat_file("Download", files)
-                    }} else {
-                        { "No Downloads available" }
-                    }
+                    }} else {{
+                        "No Downloads available"
+                    }}
                 </div>
             </div>
             <div id="content">
-                <details open=true id="readme">
-                    <summary><span>{ load_svg("info") }{ "README" }</span></summary>
-                    {
-                        crate::helpers::find_files_start(props.game.server_path(), "readme", false)
-                            .pop()
-                            .map(|path| text_file(&path))
-                    }
-                </details>
-                { misc_files(&props.game) }
+                { readme(&props.game.path()) }
+                { misc_content(&props.game) }
+                // { misc_dirs(&props.game) }
             </div>
         </Document>
     }
+}
+
+fn readme(path: &Path) -> Option<Html> {
+    crate::helpers::find_files_start(path, "readme", false)
+        .pop()
+        .map(|path| html! {
+            <details open=true class="readme">
+                <summary><span>{ load_svg("info") }{ "README" }<a class="download" href={ Url::from(&path).to_string() }>{ load_svg("download") }</a></span></summary>
+                { text_file(&path) }
+            </details>
+        })
 }
 
 /// Returned Vec contains (name, url)
@@ -119,37 +126,88 @@ fn store_urls(urls: &Option<Vec<String>>) -> Option<Html> {
     )
 }
 
-fn misc_files(game: &GameInfo) -> Html {
+
+fn misc_content(game: &GameInfo) -> Html {
     game.platformed_files().into_iter()
-        .map(|(file_name, files)| html! {
-            <li class="item">{ plat_file(&file_name, files) }</li>
-        })
-        // Also other non-platformed files
-        .chain(game.server_path().read_dir()
+        .map(|(file_name, files)| plat_file(&file_name, files))
+        // Also platformed directories
+        // .chain(game.platformed_dirs().iter()
+        //     .map(||))
+        // Also other non-platformed files and directories
+        .chain(game.path().read_dir()
             .expect("Game does not exist")
             .filter_map(Result::ok)
-            .filter(|entry| entry.metadata().ok().is_some_and(|m| m.is_file()))
-            .filter(|entry| {
-                let name = entry.file_name();
-                let name = name.to_string_lossy();
+            .filter_map(crate::helpers::resolve_entry)
+            .filter(|(path, _)| {
+                let name = path.file_name().unwrap().to_string_lossy().to_string();
                 name != INFO_FILE_NAME
                 && !name.starts_with(THUMB_NAME)
                 && !name.to_lowercase().starts_with("readme")
+                && !name.starts_with(PLATFORM_PREFIX)
             })
-            .map(|entry| html! {
-                // Non-platformed file must be text file. Binaries are platformed.
-                <li class="item">
-                    <details>
-                        <summary>{ load_svg("text-file") }{ entry.file_name().to_string_lossy() }</summary>
-                        { text_file(&entry.path()) }
-                    </details>
-                </li>
-            })
+            .map(|(path, meta)| fs_content(path, meta))
         )
+        .map(|html| html! {
+            <li class="item">{ html }</li>
+        })
         .collect()
 }
 
-fn plat_file(name: &str, files: Vec<PlatFile>) -> Html {
+/// Render the contents of a *file* or *directoru* (recursively) to [`HTML`].
+fn fs_content(path: PathBuf, meta: Metadata) -> Html {
+    /// All the files and subdirs of a directory.
+    fn dir_content(dir_path: PathBuf) -> impl Iterator<Item = Html> {
+        // Look for README.md for this directory
+        readme(&dir_path).into_iter().chain(
+            // Then all other files
+            dir_path.read_dir()
+                .expect("Can't go any further")
+                .filter_map(Result::ok)
+                .filter(|entry| !entry.file_name().to_string_lossy().to_lowercase().starts_with("readme"))
+                .filter_map(crate::helpers::resolve_entry)
+                .map(|(path, meta)| html! {
+                    <li class="item">{ fs_content(path, meta) }</li>
+                })
+        )
+    }
+
+    let name = path.file_name().unwrap().to_string_lossy().to_string();
+
+    if meta.is_file() {
+        let mime = Command::new("file")
+            .arg("-b")
+            .arg("--mime-type")
+            .arg(&path)
+            .output()
+            .ok()
+            .map(|out| command_output(out.stdout));
+
+        if mime.is_some_and(|mime| mime == "text/plain") {
+            html! {
+                <details class="file text">
+                    <summary>{ load_svg("text-file") }{ name }</summary>
+                    { text_file(&path) }
+                </details>
+            }
+        } else {
+            html! { <a class="file" href={ Url::from(path).to_string() }>{ load_svg("file") }{ name }</a> }
+        }
+    } else { // is_dir
+        html! {
+            <details class="dir">
+                <summary>{ load_svg("folder") }{ name }</summary>
+                { dir_content(path).collect::<Html>() }
+            </details>
+        }
+    }
+}
+
+/// Render a file that exists for multiple platforms.
+fn plat_file(name: &str, mut files: Vec<PlatFile>) -> Html {
+    let anchor = |file: PlatFile| html! {
+        <a href={ Url::from(file.path).to_string() } platform={file.plat.clone()} arch={file.arch.clone()}>{ load_svg(&file.plat) }</a>
+    };
+
     html! {<>
         { load_svg("file") }
         <span class="name">{ &name }</span>
@@ -158,226 +216,17 @@ fn plat_file(name: &str, files: Vec<PlatFile>) -> Html {
         if files.len() == 1 {
             <div class="download single">
                 <div class="icon-wrapper">{ load_svg("download") }</div>
-                <a href={ files[0].path.display().to_string() } platform={files[0].plat.clone()} arch={files[0].arch.clone()}>{ load_svg(&files[0].plat) }</a>
+                { anchor(files.remove(0)) }
             </div>
         } else {
             <div class="download">
                 <span class="icon-wrapper">{ load_svg("download") }</span>
                 <span class="platforms">{
                     files.into_iter()
-                        .map(|file| html! {
-                            <a href={ file.path.display().to_string() } platform={file.plat.clone()} arch={file.arch.clone()}>{ load_svg(&file.plat) }</a>
-                        })
+                        .map(anchor)
                         .collect::<Html>()
                 }</span>
             </div>
         }
     </>}
 }
-
-
-// /// Puts each entry of the *game dir* in the resulting [`HTML`] using `details` and `summary` tags.
-// /// 
-// /// Will do different things depening on the type of entry:
-// /// 1. `File`: gives options ot download file, with different platforms if a subextension matches.
-// /// 2. `Directory`: Recurses all files and directories.
-// /// 3. `Symlink`: resolves the link and acts accordingly. Returns *unresolved link* if leads to another link.
-// fn misc_contents(game_dir_name: &str) -> Html {
-//     // Store already used filenames to prevent duplicates of platformed files.
-//     let mut used = HashSet::new();
-//     let url = PathBuf::from("/games/").join(game_dir_name);
-//
-//     iter_dir(
-//         &url,
-//         &mut used,
-//         Some(|html| html! { <li class="item">{ html }</li> }),
-//
-//         GAMES_PATH.join(game_dir_name).read_dir().expect("Game does not exist")
-//             .filter_map(Result::ok)
-//             .filter(|entry| {
-//                 let name = entry.file_name();
-//                 let name = name.to_string_lossy();
-//                 name != INFO_FILE_NAME
-//                 && !name.starts_with(THUMB_NAME)
-//                 && name != game_dir_name
-//                 && if let Some((base_name, _)) = name.split_once('.') {
-//                     !base_name.starts_with(PLATFORM_PREFIX)
-//                 } else {
-//                     true
-//                 }
-//             })
-//     )
-//     .collect::<Html>()
-// }
-//
-// /// Recursively get all files and subdirectories.
-// fn dir(dir_path: &Path, parent_url: &Path) -> Result<Html, String> {
-//     // Store already used filenames to prevent duplicates of platformed files.
-//     let mut used = HashSet::new();
-//     let name = dir_path.file_name().unwrap().to_string_lossy().to_string();
-//     let url = parent_url.join(&name);
-//
-//     Ok(html! {
-//         <details class="sub-dir">
-//             <summary>{ load_svg("folder") }{ name }</summary> {
-//                 iter_dir(
-//                     &url,
-//                     &mut used,
-//                     None,
-//                     dir_path.read_dir()
-//                         .map_err(|err| format!("Could not go into directory: {err}"))?
-//                         .filter_map(Result::ok)
-//                 )
-//                 .collect::<Html>()
-//             }
-//         </details>
-//     })
-// }
-//
-// /// helper to recurse direcotry
-// fn iter_dir<'a>(
-//     url: &'a Path,
-//     used: &'a mut HashSet<String>,
-//     transform_html: Option<fn(Html) -> Html>,
-//     iter: impl Iterator<Item = DirEntry> + 'a
-// ) -> impl Iterator<Item = Html> + 'a
-// {
-//     iter
-//         .filter_map(|entry| entry.metadata().ok().map(|meta| (entry, meta)))
-//         .map(move |(entry, meta)| {
-//             let mut name = entry.file_name().to_string_lossy().to_string();
-//
-//             let res = if meta.is_file() {
-//                 file(&mut name, &entry.path(), &url)
-//             } else if meta.is_dir() {
-//                 dir(&entry.path(), &url)
-//             } else { // symlink
-//                 match entry.path().read_link() {
-//                     Ok(path) => {
-//                         name = path.file_name().unwrap().to_string_lossy().to_string();
-//
-//                         if path.is_file() {
-//                             file(&mut name, &path, &url)
-//                         } else if path.is_dir() {
-//                             dir(&path, &url)
-//                         } else {
-//                             // Do not resolve again
-//                             Err("Is Symlink.\nMax depth for symlink resolution is 1".to_string())
-//                         }
-//                     },
-//                     Err(error) => Err(error.to_string())
-//                 }
-//             };
-//
-//             (name, res)
-//         })
-//         .filter_map(move |(name, res)| {
-//             match res {
-//                 Ok(html) => if used.insert(name) {
-//                     // Is not a duplicate
-//                     Some(match transform_html {
-//                         Some(f) => f(html),
-//                         None => html
-//                     })
-//                 } else {
-//                     // name was already used; skip this one
-//                     None
-//                 },
-//                 // If there was an error with the file, use it regardless of if it was repeated or not.
-//                 Err(error) => Some(item_error(name, error))
-//             }
-//         })
-// }
-//
-// /// If file is platformed (i.e. contains .win, .linux, or .mac subextension) the platform is removed form the file name.
-// fn file(name: &mut String, path: &Path, parent_url: &Path) -> Result<Html, String> {
-//     let mime = Command::new("file")
-//         .arg("-b")
-//         .arg("--mime-type")
-//         .arg(path)
-//         .output()
-//         .ok()
-//         .map(|out| command_output(out.stdout));
-//
-//     // Plain text files can be shown directly.
-//     Ok(if mime.is_some_and(|mime| mime == "text/plain") {
-//         html! {
-//             <li class="item">
-//                 <details>
-//                     <summary>{ load_svg("text-file") }{ name }</summary>
-//                     { text_file(path) }
-//                 </details>
-//             </li>
-//         }
-//     }
-//     // Binaries/other are downloaded
-//     else {
-//         let vars = match find_downloads(path) {
-//             Some((new_name, vars)) => {
-//                 *name = new_name;
-//                 vars
-//             },
-//             None => vec![]
-//         };
-//
-//         html! {<>
-//             { load_svg("file") }
-//             <span class="name">{ &name }</span>
-//
-//             if vars.is_empty() {
-//                 // No platform
-//                 <a class="download" href={ parent_url.join(name).display().to_string() }>{ load_svg("download") }</a>
-//             } else if vars.len() == 1 {
-//                 // Has platform, but not other variants
-//                 <div class="download one">
-//                     { load_svg("download") }
-//                     <a href={ parent_url.join(name).display().to_string() }>{ load_svg(&vars[0].0) }</a>
-//                 </div>
-//             } else {
-//                 // Has other variants
-//                 <div class="downloads">{
-//                     load_svg("download")
-//                 }{
-//                     vars.into_iter()
-//                         .map(|(icon, f_name)| html! {
-//                             <a href={ parent_url.join(f_name).display().to_string() }>{ load_svg(icon) }</a>
-//                         })
-//                         .collect::<Html>()
-//                 }</div>
-//             }
-//         </>}
-//     })
-// }
-//
-// /// Find alternative download versions of a binary file.
-// /// Output contains `(name_without_platform, [(icon_name, file_name of variant)])`
-// /// Output also includes the original input.
-// /// 
-// /// Returns [`None`] if could not recognize a **platform** for this file.
-// fn find_downloads(file: &Path) -> Option<(String, Vec<(String, String)>)> {
-//     let name = file.file_name().unwrap().to_string_lossy().to_string();
-//
-//     let split = name.split_once(".win.")
-//         .or_else(|| name.split_once(".linux.")
-//             .or_else(|| name.split_once(".mac."))
-//         )?;
-//     let new_name = split.0.to_string() + "." + split.1;
-//     let (start, end) = (split.0.to_string() + ".", ".".to_string() + split.1);
-//
-//     Some((new_name,
-//         // Search for other variants in the parent directory of the file
-//         crate::helpers::find_files_start(file.parent().unwrap(), &start, true)
-//             .into_iter()
-//             .filter_map(|f| {
-//                 let f_name = f.file_name().unwrap().to_string_lossy().to_string();
-//                 let p = f_name.strip_prefix(&start)?.strip_suffix(&end)?;
-//
-//                 if eq_one_of(p, ["win", "linux", "mac"]) {
-//                     Some((p.to_string(), f_name))
-//                 } else {
-//                     None
-//                 }
-//             })
-//             .collect()
-//     ))
-// }

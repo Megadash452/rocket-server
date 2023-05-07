@@ -1,7 +1,7 @@
 pub mod osts;
 pub mod games;
 
-use std::{path::Path, fs::DirEntry};
+use std::{path::Path, fs::DirEntry, fmt::Display};
 use rocket::{
     Route,
     response::content::RawHtml as Html
@@ -11,6 +11,36 @@ use super::*;
 pub static INFO_FILE_NAME: &str = "info.json";
 pub static THUMB_NAME: &str = "thumbnail";
 
+
+/// Represents the URL of a file in `./routes` that is given to the client.
+#[derive(Debug)]
+pub struct Url(PathBuf);
+impl Url {
+    /// Converts a **path** (absolute or relative) into a [`Url`].
+    /// Removes all components of the Path *up to and including* the `routes` root.
+    pub fn new(path: impl AsRef<Path>) -> Self {
+        use std::path::Component;
+        Self (
+            Some(Component::RootDir).into_iter().chain(
+                path.as_ref().components()
+                    .skip_while(|comp| comp.as_os_str() != "routes")
+                    .skip(1)
+            )
+            .collect::<PathBuf>()
+        )
+    }
+}
+impl<P: AsRef<Path>> From<P> for Url {
+    #[inline]
+    fn from(path: P) -> Self {
+        Self::new(path)
+    }
+}
+impl Display for Url {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0.display().to_string())
+    }
+}
 
 /// Tries to read all *subdirectories* in **path** and initialize [`T`]s from the info in each *subdirectory.
 /// The directories that couldn't be read into [`T`]s are put in the **error Vec**,
