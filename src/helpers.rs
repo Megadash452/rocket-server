@@ -39,6 +39,7 @@ pub fn command_output(mut output: Vec<u8>) -> String {
 /// Find files that start with some string.
 pub fn find_files_start(search_dir: impl AsRef<Path>, start: &str, case_sensitive: bool) -> Vec<PathBuf> {
     Command::new("find")
+        .arg("-L")
         .arg(search_dir.as_ref())
         .arg(if case_sensitive {
             "-name"

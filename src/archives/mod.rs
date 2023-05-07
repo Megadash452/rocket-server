@@ -12,15 +12,6 @@ pub static INFO_FILE_NAME: &str = "info.json";
 pub static THUMB_NAME: &str = "thumbnail";
 
 
-// #[get("/")]
-// pub fn index() -> Redirect {
-//     Redirect::to("login?next=archives")
-// }
-
-// pub fn routes() -> Vec<Route> {
-//     routes![index]
-// }
-
 /// Tries to read all *subdirectories* in **path** and initialize [`T`]s from the info in each *subdirectory.
 /// The directories that couldn't be read into [`T`]s are put in the **error Vec**,
 /// along with the [`T::Error`] itself.
@@ -31,7 +22,7 @@ pub fn read_all_dirs<T: FromDir + Ord>(dir: &Path) -> (Vec<T>, Vec<(String, T::E
     for entry in std::fs::read_dir(dir)
         .expect("Can't read dir")
         .filter_map(Result::ok)
-        .filter(|entry| entry.metadata().ok().is_some_and(|m| m.is_dir()))
+        .filter(|entry| entry.metadata().ok().is_some_and(|m| m.is_dir() || m.is_symlink()))
     {
         match T::read_dir(&entry.path()) {
             Ok(album) => items.push(album),
