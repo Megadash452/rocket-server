@@ -1,4 +1,9 @@
-use std::{path::{PathBuf, Path}, fmt::{Display, Write}, process::Command};
+use std::{
+    io,
+    path::{PathBuf, Path},
+    fmt::{Display, Write},
+    process::Command
+};
 use chrono::Duration;
 
 
@@ -28,6 +33,13 @@ pub fn eq_one_of<'a>(this: &'a str, others: impl AsRef<[&'a str]>) -> bool {
     false
 }
 
+pub fn resolve_symlink(mut link: PathBuf) -> io::Result<PathBuf> {
+    while link.symlink_metadata()?.is_symlink() {
+        link = std::fs::read_link(link)?
+    }
+    Ok(link)
+}
+
 /// Removes the trailing `'\n'` from a [`Command`]'s output (stdout or stderr).
 pub fn command_output(mut output: Vec<u8>) -> String {
     if output.last().is_some_and(|&l| l == b'\n') {
@@ -41,6 +53,8 @@ pub fn find_files_start(search_dir: impl AsRef<Path>, start: &str, case_sensitiv
     Command::new("find")
         .arg("-L")
         .arg(search_dir.as_ref())
+        .arg("-maxdepth")
+        .arg("1")
         .arg(if case_sensitive {
             "-name"
         } else {
