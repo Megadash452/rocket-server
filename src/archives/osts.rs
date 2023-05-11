@@ -12,6 +12,9 @@ static SKIP_EXPORT_PATH: Lazy<PathBuf> = Lazy::new(|| COVER_EXPORTS_PATH.join("s
 
 
 #[derive(Properties, PartialEq, Eq)]
+// TODO: in album page, have a player for each song next to the entry
+// ALso have equalizer animation when song plays
+// User can upload song
 pub struct AlbumInfo {
     pub name: String,
     /// A path relative to the server root.
