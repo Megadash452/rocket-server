@@ -1,0 +1,31 @@
+{
+    "commands": [
+        {
+            "name": "sass",
+            "download": "https://github.com/sass/dart-sass/releases/tag/1.57.1",
+            "instructions": "unzip tar.gz, place 'sass' in '/usr/local/bin/' or '~/.local/bin/'"
+        },
+        {
+            "name": "python",
+            "install": "sudo dnf install python3"
+        },
+        {
+            "name": "identify",
+            "install": "sudo dnf install imagemagick"
+        },
+        {
+            "name": "find",
+            "install": "sudo dnf install findutils"
+        }
+    ],
+    "python": [
+        {
+            "name": "mutagen",
+            "install": "pip install mutagen"
+        },
+        {
+            "name": "magic",
+            "install": "pip install python-magic"
+        }
+    ]
+}

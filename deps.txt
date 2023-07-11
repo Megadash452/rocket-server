@@ -1,4 +1,0 @@
-Commands:
-  sass
-  identify (imagemagick)
-  python3-mutagen

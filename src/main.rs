@@ -112,6 +112,14 @@ fn rocket_config() -> Figment {
 
 #[launch]
 fn rocket_server() -> _ {
+    let deps: helpers::ExternalDeps = serde_json::from_str(
+            std::fs::read_to_string("./deps.json").expect("Need file ./deps.json").as_str()
+        ).expect("Invalid content in ./deps.json");
+    if !deps.resolve() {
+        eprintln!("Please install the missing dependencies");
+        std::process::exit(1);
+    }
+
     let rocket = rocket::custom(rocket_config())
         // .mount(projects::ROOT.rocket_base(), projects::routes())
         // .mount(projects::ROOT.rocket_base(), FileServer::from("local-replit"))

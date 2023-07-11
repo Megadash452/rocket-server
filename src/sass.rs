@@ -25,9 +25,11 @@ impl FromSegments<'_> for SassPath {
                 .map_err(|e| SassPathError::PathError(e))?
         );
 
+        // Has no extension, or extension is not .css
         if !path.extension().is_some_and(|ext| ext == "css") {
             return Err(SassPathError::NotCss)
         }
+        // No file `{path}.sass`
         if !path.with_extension("sass").is_file() {
             return Err(SassPathError::NoSass)
         }

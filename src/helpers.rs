@@ -3,9 +3,10 @@ use std::{
     path::{PathBuf, Path},
     fmt::{Display, Write},
     fs::{Metadata, DirEntry},
-    process::Command
+    process::{Command, Stdio}
 };
 use chrono::Duration;
+use serde::Deserialize;
 
 
 #[macro_export]
@@ -13,6 +14,84 @@ macro_rules! do_while {
     (do $body:block while $cond:expr) => {
         while { $body; $cond } {}
     };
+}
+
+
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+enum Dep {
+    File {
+        name: String,
+        download: String,
+        instructions: String
+    },
+    Package {
+        name: String,
+        // TODO: May add install command for other distros
+        install: String
+    }
+}
+impl Dep {
+    pub fn name(&self) -> &str {
+        match self {
+            Self::Package { name, .. } => name,
+            Self::File { name, .. } => name
+        }
+    }
+    pub fn installation(&self) -> String {
+        match self {
+            Self::Package { install, .. } => format!("Run command `{install}`"),
+            Self::File { download, instructions, .. } => format!("Download from {download:?}, then {instructions}")
+        }
+    }
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ExternalDeps {
+    commands: Vec<Dep>,
+    python: Vec<Dep>,
+}
+impl ExternalDeps {
+    /// Returns `false` if there are Missing Dependencies.
+    pub fn resolve(self) -> bool {
+        let mut good = true;
+
+        for dep in self.commands {
+            let exists = Command::new("command")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .arg("-v")
+                .arg(dep.name())
+                .status()
+                .is_ok_and(|status| status.success());
+            if !exists {
+                eprintln!("Missing {:?} command. Installation:\n\t{}", dep.name(), dep.installation());
+            }
+            // If was good, is not good now
+            if good {
+                good = exists
+            }
+        }
+
+        for dep in self.python {
+            let exists = Command::new("python")
+                .stdout(Stdio::null())
+                .stderr(Stdio::null())
+                .arg("-c")
+                .arg(format!("import {}", dep.name()))
+                .status()
+                .is_ok_and(|status| status.success());
+            if !exists {
+                eprintln!("Missing python module {:?}. Installation:\n\t{}", dep.name(), dep.installation())
+            }
+            // If was good, is not good now
+            if good {
+                good = exists
+            }
+        }
+
+        good
+    }
 }
 
 
