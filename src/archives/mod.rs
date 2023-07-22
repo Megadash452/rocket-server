@@ -29,6 +29,11 @@ impl Url {
             .collect::<PathBuf>()
         )
     }
+    /// Like [`Path::join()`].
+    #[inline]
+    pub fn join(self, path: impl AsRef<Path>) -> Self {
+        Self(self.0.join(path))
+    }
 }
 impl<P: AsRef<Path>> From<P> for Url {
     #[inline]

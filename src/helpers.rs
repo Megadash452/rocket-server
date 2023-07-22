@@ -1,8 +1,6 @@
 use std::{
-    io,
     path::{PathBuf, Path},
     fmt::{Display, Write},
-    fs::{Metadata, DirEntry},
     process::{Command, Stdio}
 };
 use chrono::Duration;
@@ -113,24 +111,6 @@ pub fn eq_one_of<'a>(this: &'a str, others: impl AsRef<[&'a str]>) -> bool {
     false
 }
 
-pub fn resolve_symlink(mut link: PathBuf) -> io::Result<PathBuf> {
-    while link.symlink_metadata()?.is_symlink() {
-        link = std::fs::read_link(link)?
-    }
-    Ok(link)
-}
-
-pub fn resolve_entry(entry: DirEntry) -> Option<(PathBuf, Metadata)> {
-    let mut path = entry.path();
-    let mut meta = entry.metadata().ok()?;
-    
-    if meta.is_symlink() {
-        path = crate::helpers::resolve_symlink(path).ok()?;
-        meta = path.metadata().ok()?;
-    }
-    Some((path, meta))
-}
-
 /// Removes the trailing `'\n'` from a [`Command`]'s output (stdout or stderr).
 pub fn command_output(mut output: Vec<u8>) -> String {
     if output.last().is_some_and(|&l| l == b'\n') {
@@ -140,6 +120,7 @@ pub fn command_output(mut output: Vec<u8>) -> String {
 }
 
 /// Find files that start with some string.
+/// Does not search subdirectories.
 pub fn find_files_start(search_dir: impl AsRef<Path>, start: &str, case_sensitive: bool) -> Vec<PathBuf> {
     Command::new("find")
         .arg("-L")

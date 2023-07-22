@@ -1,11 +1,10 @@
-use std::fs::Metadata;
 use std::path::{PathBuf, Path};
 use std::process::Command;
 use yew::prelude::*;
-use crate::archives::{THUMB_NAME, INFO_FILE_NAME, Url};
+use crate::archives::Url;
 use crate::components::{load_svg, text_file};
 use crate::helpers::{display_separated, command_output};
-use crate::archives::games::{GameInfo, PlatFile, GAMES_PATH, PLATFORM_PREFIX};
+use crate::archives::games::{GameInfo, PlatFile, GAMES_PATH, GameFile};
 use super::{Document, UserInfo, item_error};
 
 
@@ -59,6 +58,7 @@ pub struct GameProps {
     pub game: GameInfo,
 }
 #[function_component]
+/// Rendering this page is a very expensive operation and should be *cached*.
 pub fn Game(props: &GameProps) -> Html {
     html! {
         <Document title={ props.game.title.clone() } header={props.user.clone()}>
@@ -67,7 +67,7 @@ pub fn Game(props: &GameProps) -> Html {
 
             <div id="info" class="horizontal-wrapper">
                 <div id="thumbnail" class="thumbnail">
-                    <img src={ props.game.url().join(&props.game.thumbnail_file_name).display().to_string() }/>
+                    <img src={ props.game.url().join(&props.game.thumbnail_file_name).to_string() }/>
                 </div>
                 <div class="vertical-wrapper">
                     <div id="title-wrapper">
@@ -96,8 +96,11 @@ pub fn Game(props: &GameProps) -> Html {
             </div>
             <div id="content">
                 { readme(&props.game.path()) }
-                { misc_content(&props.game) }
-                // { misc_dirs(&props.game) }
+                { match props.game.files() {
+                    // TOOD: sort files before directories
+                    Ok(files) => files.map(fs_content).collect::<Html>(),
+                    Err(conflict) => item_error("Game files".to_string(), conflict.to_string())
+                } }
             </div>
         </Document>
     }
@@ -126,87 +129,53 @@ fn store_urls(urls: &Option<Vec<String>>) -> Option<Html> {
     )
 }
 
-
-fn misc_content(game: &GameInfo) -> Html {
-    game.platformed_files().into_iter()
-        .map(|(file_name, files)| plat_file(&file_name, files))
-        // Also platformed directories
-        // .chain(game.platformed_dirs().iter()
-        //     .map(||))
-        // Also other non-platformed files and directories
-        .chain(game.path().read_dir()
-            .expect("Game does not exist")
-            .filter_map(Result::ok)
-            .filter_map(crate::helpers::resolve_entry)
-            .filter(|(path, _)| {
-                let name = path.file_name().unwrap().to_string_lossy().to_string();
-                name != INFO_FILE_NAME
-                && !name.starts_with(THUMB_NAME)
-                && !name.to_lowercase().starts_with("readme")
-                && !name.starts_with(PLATFORM_PREFIX)
-            })
-            .map(|(path, meta)| fs_content(path, meta))
-        )
-        .map(|html| html! {
-            <li class="item">{ html }</li>
-        })
-        .collect()
-}
-
 /// Render the contents of a *file* or *directoru* (recursively) to [`HTML`].
-fn fs_content(path: PathBuf, meta: Metadata) -> Html {
-    /// All the files and subdirs of a directory.
-    fn dir_content(dir_path: PathBuf) -> impl Iterator<Item = Html> {
-        // Look for README.md for this directory
-        readme(&dir_path).into_iter().chain(
-            // Then all other files
-            dir_path.read_dir()
-                .expect("Can't go any further")
-                .filter_map(Result::ok)
-                .filter(|entry| !entry.file_name().to_string_lossy().to_lowercase().starts_with("readme"))
-                .filter_map(crate::helpers::resolve_entry)
-                .map(|(path, meta)| html! {
-                    <li class="item">{ fs_content(path, meta) }</li>
-                })
-        )
-    }
-
-    let name = path.file_name().unwrap().to_string_lossy().to_string();
-
-    if meta.is_file() {
-        let mime = Command::new("file")
+fn fs_content(file: GameFile) -> Html {
+    fn is_mime(file: &Path, mime: &str) -> bool {
+        Command::new("file")
             .arg("-b")
             .arg("--mime-type")
-            .arg(&path)
+            .arg(file)
             .output()
-            .ok()
-            .map(|out| command_output(out.stdout));
+            .is_ok_and(|out| mime == command_output(out.stdout))
+    }
 
-        if mime.is_some_and(|mime| mime == "text/plain") {
-            html! {
-                <details class="file text">
-                    <summary>{ load_svg("text-file") }{ name }</summary>
-                    { text_file(&path) }
+    let name = file.name();
+
+    html! {
+        <li class="item">{ match file {
+            GameFile::Dir(path) => html! {
+                <details class="dir">
+                    <summary>{ load_svg("folder") }{ name }</summary>
+                    {GameFile::read_dir(&path)
+                        .map(fs_content)
+                        .collect::<Html>()
+                    }
                 </details>
-            }
-        } else {
-            html! { <a class="file" href={ Url::from(path).to_string() }>{ load_svg("file") }{ name }</a> }
-        }
-    } else { // is_dir
-        html! {
-            <details class="dir">
-                <summary>{ load_svg("folder") }{ name }</summary>
-                { dir_content(path).collect::<Html>() }
-            </details>
-        }
+            },
+            GameFile::NormalFile(path) =>
+                if is_mime(&path, "text/plain") {
+                    html! {
+                        <details class="file text">
+                            <summary>{ load_svg("text-file") }{ &name }</summary>
+                            { text_file(&path) }
+                        </details>
+                    }
+                } else {
+                    html! { <a class="file" href={ Url::from(path).to_string() }>{ load_svg("file") }{ &name }</a> }
+                },
+            // TODO: show content if file is text/plain, with tabs to switch between platforms
+            GameFile::PlatFile(files) => plat_file(&name, files)
+        } }</li>
     }
 }
 
 /// Render a file that exists for multiple platforms.
 fn plat_file(name: &str, mut files: Vec<PlatFile>) -> Html {
-    let anchor = |file: PlatFile| html! {
-        <a href={ Url::from(file.path).to_string() } platform={file.plat.clone()} arch={file.arch.clone()}>{ load_svg(&file.plat) }</a>
-    };
+    fn anchor(file: PlatFile) -> Html {
+        html! { <a href={ Url::from(file.path).to_string() } platform={file.plat.clone()} arch={file.arch.clone()}>{ load_svg(&file.plat) }</a> }
+    }
+    let download_svg = load_svg("download");
 
     html! {<>
         { load_svg("file") }
@@ -215,12 +184,12 @@ fn plat_file(name: &str, mut files: Vec<PlatFile>) -> Html {
         // Vec is never empty
         if files.len() == 1 {
             <div class="download single">
-                <div class="icon-wrapper">{ load_svg("download") }</div>
+                <div class="icon-wrapper">{ download_svg }</div>
                 { anchor(files.remove(0)) }
             </div>
         } else {
             <div class="download">
-                <span class="icon-wrapper">{ load_svg("download") }</span>
+                <span class="icon-wrapper">{ download_svg }</span>
                 <span class="platforms">{
                     files.into_iter()
                         .map(anchor)

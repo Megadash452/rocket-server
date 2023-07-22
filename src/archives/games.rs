@@ -1,4 +1,9 @@
-use serde::Deserialize;
+use std::{
+    collections::VecDeque,
+    fs,
+    io::{Read, Write}
+};
+use serde::{Serialize, Deserialize};
 use thiserror::Error;
 use super::*;
 use crate::components::games as components;
@@ -7,7 +12,7 @@ pub static GAMES_PATH: Lazy<PathBuf> = Lazy::new(|| PathBuf::from("./routes/game
 pub static PLATFORM_PREFIX: &str = "plat-";
 
 
-#[derive(Debug)]
+#[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct PlatFile {
     /// Path relative to server root.
     pub path: PathBuf,
@@ -16,19 +21,78 @@ pub struct PlatFile {
     pub arch: Option<String>
 }
 
-pub enum PlatNode {
-    File(Vec<PlatFile>),
-    Dir(HashMap<String, Self>)
+#[derive(Debug)]
+pub enum GameFile {
+    Dir(PathBuf),
+    NormalFile(PathBuf),
+    PlatFile(Vec<PlatFile>)
+}
+impl GameFile {
+    /// Returns error if entry is file and can't read it.
+    pub fn from_entry(entry: DirEntry) -> io::Result<Self> {
+        if entry.file_type()?.is_dir() {
+           Ok(GameFile::Dir(entry.path()))
+        } else {
+            let content = fs::read_to_string(entry.path())?;
+
+            if content.starts_with(GameInfo::NORMAL_FILE_CONTENT) {
+                Ok(GameFile::NormalFile(entry.path()))
+            } else {
+                Ok(GameFile::PlatFile(
+                    content.split('\n')
+                        .filter(|s| !s.is_empty())
+                        .map(|s| serde_json::from_str::<PlatFile>(s)
+                            .expect("Could not deserialize PlatFile")
+                        )
+                        .collect()
+                ))
+            }
+        }
+    }
+    
+    /// Get the "filename" of the file or directory.
+    pub fn name(&self) -> String {
+        let path = match self {
+            Self::Dir(path) | Self::NormalFile(path) => path,
+            Self::PlatFile(plats) => &plats.first().unwrap().path
+            
+        };
+        path.file_name().unwrap().to_string_lossy().to_string()
+    }
+
+    /// Use with path from [`Self::Dir`].
+    pub fn read_dir(dir: &Path) -> impl Iterator<Item = Self> {
+        dir.read_dir()
+            .expect("Could not read GameFile::Dir")
+            .map(|r| GameFile::from_entry(r.unwrap())
+                .expect("Can't read file to GameFile")
+            )
+    }
+}
+
+#[derive(Debug, Error)]
+pub enum Conflict {
+    #[error("A directory exists in place of file {file:?}")]
+    FileDir {
+        /// Path (relative to server root) of the platformed **file** that exists.
+        file: PathBuf
+    },
+    #[error("A normal file exists in place of platformed file {0:?}. Platformed files cannot coexist with normal files.")]
+    NormalExists(PathBuf),
+    #[error("Found symlink at {0:?}. Symlinks are not allowed within game directory")]
+    Symlink(PathBuf)
 }
 
 #[derive(Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
+/// An instance of [`Self`] should be obtained by calling [`FromDir::read_dir()`], then use [`Self::binaries()`], [`Self::files()`].
+/// A `README` for self and each subdirectory must be obtained separately by [`finding files that start`](crate::helpers::find_files_start) with `"README"` (case-insensitive)
 pub struct GameInfo {
     pub title: String,
     pub publisher: String,
     pub genre: String,
     pub release_year: u32,
-    // Non-empty array
+    // TODO: use NonEmpty
     pub platforms: Vec<String>,
     pub store_urls: Option<Vec<String>>,
     pub ost_dir_name: Option<String>,
@@ -38,11 +102,13 @@ pub struct GameInfo {
     pub thumbnail_file_name: String
 }
 impl GameInfo {
+    const NORMAL_FILE_CONTENT: &str = "normal";
+
     pub fn path(&self) -> PathBuf {
         GAMES_PATH.join(&self.dir_name)
     }
-    pub fn url(&self) -> PathBuf {
-        PathBuf::from("/games/").join(&self.dir_name)
+    pub fn url(&self) -> Url {
+        Url::from(self.path())
     }
 
     pub fn store_name(mut url: &str) -> &'static str {
@@ -58,7 +124,7 @@ impl GameInfo {
     
     /// Gets the paths of the game's binary for each platform.
     /// Returns [`None`] if no file exists with the same base-name as the game's directory.
-    /// THe [`Vec`] in [`Some`] is never empty.
+    /// The [`Vec`] in [`Some`] is never empty.
     pub fn binaries(&self) -> Option<Vec<PlatFile>> {
         // Search the directories that have files specific to a platform (e.g. Windows and Linux)
         let rtrn = self.plat_dirs()
@@ -80,39 +146,140 @@ impl GameInfo {
             Some(rtrn)
         }
     }
-    /// like binaries but for all other files.
-    /// [`Vec`] is never empty.
-    pub fn platformed_files(&self) -> HashMap<String, Vec<PlatFile>> {
-        let mut files: HashMap<String, Vec<PlatFile>> = HashMap::new();
 
-        for (dir, plat, arch) in self.plat_dirs() {
-            for file in dir.path()
-                .read_dir()
-                .expect("can't read platform dir")
+    /// Create files and directories in `"./target/games-files/{game}/"` for easier iteration in [`Self::files()`].
+    /// Writes the information of each file in the respective directory, using **Breadth-First** traversal of the filesystem.
+    /// Returns the path of the directory written to.
+    /// 
+    /// Format of files in `"./target/games-files/{game}/"`:
+    ///  - A file with a single line `normal` is not for a platform (i.e. the actual file is not inside a folder like "plat-linux").
+    ///  - A file with a *line-separated* list of [`PlatFile`]s in *JSON* format.
+    /// 
+    /// Instead of writing to the filesystem, could keep track of nodes in memory, but that was way more complicated than this.
+    /// 
+    /// ***TODO***: implement this without using the filesystem.
+    /// 
+    /// Doesn't resolve symlinks, because that't not necessary right now.
+    /// Panics if can't write there.
+    fn create_file_locations(&self) -> Result<PathBuf, Conflict> {
+        let target_path = PathBuf::from(format!("./target/games-files/{}", self.dir_name));
+        // TODO: return if no files have changed in self.path() since last call.
+        // if target_path.exists() {
+        //     return;
+        // }
+
+        // remove target dir. if doesnt exist, its better (hence drop)
+        drop(fs::remove_dir_all(&target_path));
+
+        fn read_dir(dir: PathBuf) -> impl Iterator<Item = PathBuf> {
+            // Dont return metadata to mitigate ToC/ToU attacks
+            dir.read_dir()
+                .expect("Can't read into...")
                 .filter_map(Result::ok)
-                .filter(|entry| entry.metadata().ok().is_some_and(|m| m.is_file()))
-                // Exclude game binary
-                .filter(|entry| entry.path().file_prefix().is_some_and(|base_name| base_name.to_string_lossy() != self.dir_name.as_str()))
-            {
-                let name = file.file_name().to_string_lossy().to_string();
-                let new_file = PlatFile {
-                    path: file.path(),
-                    plat: plat.clone(),
-                    arch: arch.clone()
-                };
+                .map(|entry| entry.path())
+        }
+        /// BFS algorithm for the filesystem. **action** is called on every file (not dir).
+        /// **filter** is only applied to the children of **start**.
+        /// 
+        /// ***WARNING***: Can return symlink. Symlinks should be made into Conflict error.
+        fn fs_bfs(start: PathBuf, filter: impl FnMut(&PathBuf) -> bool) -> impl Iterator<Item = PathBuf> {
+            let mut iter = vec![];
+            let mut queue = VecDeque::new();
+            // Note: start can be a symlink that points to a directory
+            if !start.is_dir() {
+                // iterator is empty if is file
+                return iter.into_iter();
+            }
+            // Step 1: Enqueue the root (Don't, just its children).
+            queue.extend(read_dir(start).filter(filter));
 
-                if let Some(files) = files.get_mut(&name) {
-                    files.push(new_file)
-                } else {
-                    files.insert(name, vec![new_file]);
+            // Step 2: Get next from queue.
+            while let Some(path) = queue.pop_front() {
+                let meta = path.metadata().expect("Can't get metadata of game file");
+                // Step 3: Do something with it.
+                if meta.is_symlink() || meta.is_file() {
+                    iter.push(path)
                 }
+                // Step 4: Enqueue its children.
+                else if meta.is_dir() {
+                    queue.extend(read_dir(path))
+                }
+            }
+
+            iter.into_iter()
+        }
+
+        // Add non-platformed files first.
+        for path in fs_bfs(self.path(), |path| {
+            // Dont add the platform folders, and exclude game metadata
+            let name = path.file_name().unwrap().to_string_lossy().to_string();
+            !name.starts_with(PLATFORM_PREFIX)
+            && name != INFO_FILE_NAME
+            && !name.starts_with(THUMB_NAME)
+            && !name.to_lowercase().starts_with("readme")
+        }) {
+            // Symlinks inside game directory are not allowed.
+            if path.is_symlink() {
+                return Err(Conflict::Symlink(path));
+            }
+            // ./target/games-files/{game}/{file...}
+            let file_path = target_path.join(path.strip_prefix(self.path()).unwrap());
+            fs::create_dir_all(file_path.parent().unwrap())
+                .expect(&format!("Can't prepare dir for {file_path:?}"));
+            // Write file info
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create(true)
+                .open(&file_path)
+                .expect(&format!("Can't create file {file_path:?}"));
+            writeln!(file, "{}", Self::NORMAL_FILE_CONTENT).expect("Could not write to file");
+        }
+        
+        // Then platformed files, and check for conflict
+        for (dir, plat, arch) in self.plat_dirs() {
+            for path in fs_bfs(dir.path(), |_| true) {
+                // ./target/games-files/{game}/{file...}
+                let file_path = target_path.join(path.strip_prefix(self.path().join(dir.file_name())).unwrap());
+                // Check file-directory conflicts
+                if file_path.is_symlink() {
+                    return Err(Conflict::Symlink(path));
+                } else if file_path.is_dir() {
+                    return Err(Conflict::FileDir { file: path });
+                }
+
+                fs::create_dir_all(file_path.parent().unwrap())
+                    .expect(&format!("Can't prepare dir for {file_path:?}"));
+                let mut file = fs::OpenOptions::new()
+                    .read(true)
+                    .append(true)
+                    .create(true)
+                    .open(&file_path)
+                    .expect(&format!("Can't open/create file {file_path:?}"));
+                // Check conflicts (if the file already exists as normal file)
+                let mut buf = [0u8; Self::NORMAL_FILE_CONTENT.len()];
+                if file.read_exact(&mut buf).is_ok() && buf == Self::NORMAL_FILE_CONTENT.as_bytes() {
+                    return Err(Conflict::NormalExists(path));
+                }
+                // Can append the path to the file
+                serde_json::to_writer(&mut file, &PlatFile { path, plat: plat.clone(), arch: arch.clone() })
+                    .expect("Could not write to file");
+                writeln!(file, "").expect("Could not write to file");
             }
         }
 
-        files
+        Ok(target_path)
     }
-    pub fn platformed_content(&self) -> HashMap<String, PlatNode> {
-        todo!()
+
+    /// TODO: doc
+    /// Vec is the content of all the files that immediately belong to ./target/games-files/{game}/
+    pub fn files(&self) -> Result<impl Iterator<Item = GameFile>, Conflict> {
+        Ok(self.create_file_locations()?
+            .read_dir()
+            .expect("Can't read into created directory")
+            .map(|r| GameFile::from_entry(r.unwrap())
+                .expect("Can't read file to GameFile")
+            )
+        )
     }
 
     /// Get the **directories (`0`)** that contain files specific to a **platform (`1`)** or **architecture (`2`)**.

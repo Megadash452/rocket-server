@@ -157,6 +157,7 @@ fn find_pfp(path: &Option<PathBuf>) -> Html {
 }
 
 pub fn load_svg(name: impl AsRef<str>) -> Html {
+    // TODO: use cache
     let data = std::fs::read(ICONS_PATH.join(name.as_ref()).with_extension("svg")).ok();
 
     Html::from_html_unchecked(yew::AttrValue::from(match data {
