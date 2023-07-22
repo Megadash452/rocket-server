@@ -1,5 +1,6 @@
 #![feature(path_file_prefix)]
 #![feature(iter_intersperse)]
+#![feature(iterator_try_collect)]
 
 mod file_browser;
 mod helpers;

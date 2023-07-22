@@ -1,8 +1,8 @@
+use nonempty::NonEmpty;
 use serde_json::Value;
 use std::io::{BufReader, BufRead, Write};
 use serde::Deserialize;
 use thiserror::Error;
-use yew::Properties;
 use super::*;
 use crate::components::osts as components;
 
@@ -11,7 +11,7 @@ static COVER_EXPORTS_PATH: Lazy<PathBuf> = Lazy::new(|| PathBuf::from("./target/
 static SKIP_EXPORT_PATH: Lazy<PathBuf> = Lazy::new(|| COVER_EXPORTS_PATH.join("skip-cover-export.txt"));
 
 
-#[derive(Properties, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 // TODO: in album page, have a player for each song next to the entry
 // ALso have equalizer animation when song plays
 // User can upload song
@@ -19,9 +19,8 @@ pub struct AlbumInfo {
     pub name: String,
     /// A path relative to the server root.
     pub cover_path: Option<PathBuf>,
-    /// Non-empty array.
-    pub artists: Option<Vec<String>>,
-    pub remixes: Option<Vec<String>>,
+    pub artists: Option<NonEmpty<String>>,
+    pub remixes: Option<NonEmpty<String>>,
     pub release_year: Option<u32>,
     pub dir_name: String,
     pub size: u32,
@@ -40,9 +39,9 @@ impl FromDir for AlbumInfo {
         struct AlbumInfoJson {
             name: String,
             artist: Option<String>,
-            artists: Option<Vec<String>>,
+            artists: Option<NonEmpty<String>>,
+            remixes: Option<NonEmpty<String>>,
             release_year: Option<u32>,
-            remixes: Option<Vec<String>>,
             complete: Option<bool>
         }
 
@@ -73,24 +72,15 @@ impl FromDir for AlbumInfo {
             name: info.name,
             cover_path: thumbnail_path,
             artists: match (info.artist, info.artists) {
-                (Some(artist), None) => Some(vec![artist]),
-                (None, Some(artists)) =>
-                    if artists.is_empty() {
-                        None
-                    } else {
-                        Some(artists)
-                    },
-                (None, None) => None,
-                (Some(_), Some(_)) => return Err(AlbumReadError::ArtistFields)
+                (Some(_), Some(_)) => return Err(AlbumReadError::ArtistFields),
+                (Some(artist), None) => Some(NonEmpty::new(artist)),
+                (None, artists) => artists,
             },
             release_year: info.release_year,
-            remixes: info.remixes.and_then(|remixes| (!remixes.is_empty()).then_some(remixes)),
+            remixes: info.remixes,
             dir_name: path.file_name().unwrap().to_string_lossy().to_string(),
             size,
-            complete: match info.complete {
-                Some(c) => c,
-                None => true
-            }
+            complete: info.complete.is_some_and(|c| c)
         })
     }
 }
@@ -107,7 +97,7 @@ pub enum AlbumReadError {
 }
 
 
-#[derive(Properties, PartialEq, Eq)]
+#[derive(PartialEq, Eq)]
 pub struct SongInfo {
     pub title: String,
     pub cover: SongCover,

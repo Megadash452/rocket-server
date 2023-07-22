@@ -33,7 +33,7 @@ fn album_browser_item(album: AlbumInfo) -> Html {
                 <div class="title-wrapper">
                     if let Some(artists) = album.artists {
                         <span class="name">{ album.name }</span>
-                        <span class="artists-wrapper">{"By "}<span class="artists">{ display_separated(artists, ", ") }</span></span>
+                        <span class="artists-wrapper">{"By "}<span class="artists">{ display_separated(&artists, ", ") }</span></span>
                     } else {
                         <span class="name full">{ album.name }</span>
                     }
@@ -117,7 +117,7 @@ fn song_item(song: SongInfo) -> Html {
                 <div class="title-wrapper">
                     if let Some(artists) = song.artists {
                         <span class="name">{ song.title }</span>
-                        <span class="artists-wrapper">{"By "}<span class="artists">{ display_separated(artists, ", ") }</span></span>
+                        <span class="artists-wrapper">{"By "}<span class="artists">{ display_separated(&artists, ", ") }</span></span>
                     } else {
                         <span class="name full">{ song.title }</span>
                     }

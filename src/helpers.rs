@@ -144,8 +144,8 @@ pub fn find_files_start(search_dir: impl AsRef<Path>, start: &str, case_sensitiv
         .unwrap_or_default()
 }
 
-pub fn display_separated<T: Display>(things: impl AsRef<[T]>, separator: &str) -> String {
-    things.as_ref().iter()
+pub fn display_separated<'a, T: Display + 'a>(things: impl IntoIterator<Item = &'a T>, separator: &str) -> String {
+    things.into_iter()
         .map(T::to_string)
         .intersperse(separator.to_string())
         .collect()

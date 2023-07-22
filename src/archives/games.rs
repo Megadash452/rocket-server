@@ -1,8 +1,9 @@
 use std::{
-    collections::VecDeque,
     fs,
+    collections::VecDeque,
     io::{Read, Write}
 };
+use nonempty::NonEmpty;
 use serde::{Serialize, Deserialize};
 use thiserror::Error;
 use super::*;
@@ -25,7 +26,7 @@ pub struct PlatFile {
 pub enum GameFile {
     Dir(PathBuf),
     NormalFile(PathBuf),
-    PlatFile(Vec<PlatFile>)
+    PlatFile(NonEmpty<PlatFile>)
 }
 impl GameFile {
     /// Returns error if entry is file and can't read it.
@@ -38,14 +39,13 @@ impl GameFile {
             if content.starts_with(GameInfo::NORMAL_FILE_CONTENT) {
                 Ok(GameFile::NormalFile(entry.path()))
             } else {
-                Ok(GameFile::PlatFile(
+                Ok(GameFile::PlatFile(NonEmpty::collect(
                     content.split('\n')
                         .filter(|s| !s.is_empty())
                         .map(|s| serde_json::from_str::<PlatFile>(s)
                             .expect("Could not deserialize PlatFile")
                         )
-                        .collect()
-                ))
+                    ).expect("PlatFile can't be empty")))
             }
         }
     }
@@ -54,7 +54,7 @@ impl GameFile {
     pub fn name(&self) -> String {
         let path = match self {
             Self::Dir(path) | Self::NormalFile(path) => path,
-            Self::PlatFile(plats) => &plats.first().unwrap().path
+            Self::PlatFile(plats) => &plats.first().path
             
         };
         path.file_name().unwrap().to_string_lossy().to_string()
@@ -92,9 +92,8 @@ pub struct GameInfo {
     pub publisher: String,
     pub genre: String,
     pub release_year: u32,
-    // TODO: use NonEmpty
-    pub platforms: Vec<String>,
-    pub store_urls: Option<Vec<String>>,
+    pub platforms: NonEmpty<String>,
+    pub store_urls: Option<NonEmpty<String>>,
     pub ost_dir_name: Option<String>,
     #[serde(skip)]
     pub dir_name: String,
@@ -124,27 +123,33 @@ impl GameInfo {
     
     /// Gets the paths of the game's binary for each platform.
     /// Returns [`None`] if no file exists with the same base-name as the game's directory.
-    /// The [`Vec`] in [`Some`] is never empty.
-    pub fn binaries(&self) -> Option<Vec<PlatFile>> {
+    pub fn binaries(&self) -> Option<NonEmpty<PlatFile>> {
         // Search the directories that have files specific to a platform (e.g. Windows and Linux)
-        let rtrn = self.plat_dirs()
-            .filter_map(|(dir, plat, arch)|{
-                let file = dir.path().read_dir()
-                    .expect("can't read platform dir")
-                    .filter_map(Result::ok)
-                    .filter(|entry| entry.metadata().ok().is_some_and(|m| m.is_file()))
-                    // The game file should have the same base name as the game's directory.
-                    .filter(|entry| entry.path().file_prefix().is_some_and(|base_name| base_name.to_string_lossy() == self.dir_name.as_str()))
-                    .next()?;
-                Some(PlatFile { path: file.path(), plat, arch })
-            })
-            .collect::<Vec<_>>();
+        NonEmpty::collect(
+            self.plat_dirs()
+                .filter_map(|(dir, plat, arch)|{
+                    let file = dir.path().read_dir()
+                        .expect("can't read platform dir")
+                        .filter_map(Result::ok)
+                        .filter(|entry| entry.metadata().ok().is_some_and(|m| m.is_file()))
+                        // The game file should have the same base name as the game's directory.
+                        .filter(|entry| entry.path().file_prefix().is_some_and(|base_name| base_name.to_string_lossy() == self.dir_name.as_str()))
+                        .next()?;
+                    Some(PlatFile { path: file.path(), plat, arch })
+                })
+        )
+    }
 
-        if rtrn.is_empty() {
-            None
-        } else {
-            Some(rtrn)
-        }
+    /// TODO: doc
+    /// Vec is the content of all the files that immediately belong to ./target/games-files/{game}/
+    pub fn files(&self) -> Result<impl Iterator<Item = GameFile>, Conflict> {
+        Ok(self.create_file_locations()?
+            .read_dir()
+            .expect("Can't read into created directory")
+            .map(|r| GameFile::from_entry(r.unwrap())
+                .expect("Can't read file to GameFile")
+            )
+        )
     }
 
     /// Create files and directories in `"./target/games-files/{game}/"` for easier iteration in [`Self::files()`].
@@ -168,7 +173,7 @@ impl GameInfo {
         //     return;
         // }
 
-        // remove target dir. if doesnt exist, its better (hence drop)
+        // Remove target dir. if doesnt exist, its better (hence drop)
         drop(fs::remove_dir_all(&target_path));
 
         fn read_dir(dir: PathBuf) -> impl Iterator<Item = PathBuf> {
@@ -268,18 +273,6 @@ impl GameInfo {
         }
 
         Ok(target_path)
-    }
-
-    /// TODO: doc
-    /// Vec is the content of all the files that immediately belong to ./target/games-files/{game}/
-    pub fn files(&self) -> Result<impl Iterator<Item = GameFile>, Conflict> {
-        Ok(self.create_file_locations()?
-            .read_dir()
-            .expect("Can't read into created directory")
-            .map(|r| GameFile::from_entry(r.unwrap())
-                .expect("Can't read file to GameFile")
-            )
-        )
     }
 
     /// Get the **directories (`0`)** that contain files specific to a **platform (`1`)** or **architecture (`2`)**.

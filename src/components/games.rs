@@ -1,5 +1,6 @@
 use std::path::{PathBuf, Path};
 use std::process::Command;
+use nonempty::NonEmpty;
 use yew::prelude::*;
 use crate::archives::Url;
 use crate::components::{load_svg, text_file};
@@ -35,7 +36,7 @@ fn games_browser_item(game: GameInfo) -> Html {
                 
                 <div class="title-wrapper">
                     <span class="name">{ game.title }</span>
-                    <span class="platforms">{"For "}<span>{ display_separated(game.platforms, ", ") }</span></span>
+                    <span class="platforms">{"For "}<span>{ display_separated(&game.platforms, ", ") }</span></span>
                 </div>
             </a>
 
@@ -43,7 +44,7 @@ fn games_browser_item(game: GameInfo) -> Html {
                 <span class="genre">{ "Genre: " }<span>{ game.genre }</span></span>
                 <span class="publisher">{ "Published by: " }<span>{ game.publisher }</span></span>
                 <span class="release-year">{ "Published on " }<span>{ game.release_year }</span></span>
-                if let Some(urls) = store_urls(&game.store_urls) {
+                if let Some(urls) = store_urls(game.store_urls.as_ref()) {
                     <span class="stores">{ "Get it on " }{ urls }</span>
                 }
             </div>
@@ -78,7 +79,7 @@ pub fn Game(props: &GameProps) -> Html {
                         <p id="genre">{ "Genre: " }<span>{ &props.game.genre }</span></p>
                         <p id="release-year">{ "Released on " }<span>{ props.game.release_year }</span></p>
                         <p id="platforms">{ "For " }<span>{ display_separated(&props.game.platforms, ", ") }</span></p>
-                        if let Some(urls) = store_urls(&props.game.store_urls) {
+                        if let Some(urls) = store_urls(props.game.store_urls.as_ref()) {
                             <p class="stores">{ "Get it on " }<span>{ urls }</span></p>
                         }
                         if let Some(dir_name) = &props.game.ost_dir_name {
@@ -118,8 +119,8 @@ fn readme(path: &Path) -> Option<Html> {
 }
 
 /// Returned Vec contains (name, url)
-fn store_urls(urls: &Option<Vec<String>>) -> Option<Html> {
-    urls.as_ref().map(|urls|
+fn store_urls(urls: Option<&NonEmpty<String>>) -> Option<Html> {
+    urls.map(|urls|
         urls.iter()
             .map(|url| html!{
                 <a class="store" href={url.clone()} target="_blank">{ GameInfo::store_name(&url) }</a>
@@ -171,7 +172,7 @@ fn fs_content(file: GameFile) -> Html {
 }
 
 /// Render a file that exists for multiple platforms.
-fn plat_file(name: &str, mut files: Vec<PlatFile>) -> Html {
+fn plat_file(name: &str, files: NonEmpty<PlatFile>) -> Html {
     fn anchor(file: PlatFile) -> Html {
         html! { <a href={ Url::from(file.path).to_string() } platform={file.plat.clone()} arch={file.arch.clone()}>{ load_svg(&file.plat) }</a> }
     }
@@ -179,13 +180,12 @@ fn plat_file(name: &str, mut files: Vec<PlatFile>) -> Html {
 
     html! {<>
         { load_svg("file") }
-        <span class="name">{ &name }</span>
+        <span class="name">{ name }</span>
 
-        // Vec is never empty
         if files.len() == 1 {
             <div class="download single">
                 <div class="icon-wrapper">{ download_svg }</div>
-                { anchor(files.remove(0)) }
+                { anchor(files.head) }
             </div>
         } else {
             <div class="download">
