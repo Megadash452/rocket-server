@@ -83,6 +83,56 @@ pub enum Conflict {
     Symlink(PathBuf)
 }
 
+/// `File system Breadth-First Search`. Traverse the contents of a directory (not including itself) using
+/// [a BFS algorithm](https://en.wikipedia.org/wiki/Breadth-first_search) (not recursive).
+/// 
+/// ***WARNING***: Can return symlink. Symlinks should be made into Conflict error.
+struct FsBfs {
+    queue: VecDeque<PathBuf>,
+}
+impl FsBfs {
+    fn _new(dir_entries: impl Iterator<Item = PathBuf>) -> Self {
+        let mut queue = VecDeque::new();
+        // Step 1: Enqueue the root (Don't, just its children).
+        queue.extend(dir_entries);
+        Self { queue }
+    }
+    /// Returns `Error` if failed to read directory entries.
+    pub fn new(start: &Path) -> io::Result<Self> {
+        Ok(Self::_new(Self::read_dir(start)?))
+    }
+    /// Like [`Self::new()`] but filters out files that are direct children (i.e. does not fileter subdirectories) of **start**.
+    pub fn new_skip_entries(start: &Path, filter: impl FnMut(&PathBuf) -> bool) -> io::Result<Self> {
+        Ok(Self::_new(Self::read_dir(start)?.filter(filter)))
+    }
+
+    fn read_dir(dir: &Path) -> io::Result<impl Iterator<Item = PathBuf>> {
+        dir.read_dir()?
+            .map(|r| r.map(|entry| entry.path()))
+            .try_collect::<Vec<_>>()
+            .map(Vec::into_iter)
+    }
+}
+impl Iterator for FsBfs {
+    type Item = PathBuf;
+
+    /// ***WARNING***: Can return symlink. Symlinks should be made into Conflict error.
+    fn next(&mut self) -> Option<Self::Item> {
+        // Step 2: Get next from queue.
+        if let Some(path) = self.queue.pop_front() {
+            let meta = path.metadata().expect("Can't get metadata of game file");
+            // Step 4: Enqueue its children.
+            if meta.is_dir() {
+                self.queue.extend(Self::read_dir(&path).unwrap())
+            }
+            Some(path)
+        } else {
+            None
+        }
+    }
+}
+
+
 #[derive(Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 /// An instance of [`Self`] should be obtained by calling [`FromDir::read_dir()`], then use [`Self::binaries()`], [`Self::files()`].
@@ -176,53 +226,15 @@ impl GameInfo {
         // Remove target dir. if doesnt exist, its better (hence drop)
         drop(fs::remove_dir_all(&target_path));
 
-        fn read_dir(dir: PathBuf) -> impl Iterator<Item = PathBuf> {
-            // Dont return metadata to mitigate ToC/ToU attacks
-            dir.read_dir()
-                .expect("Can't read into...")
-                .filter_map(Result::ok)
-                .map(|entry| entry.path())
-        }
-        /// BFS algorithm for the filesystem. **action** is called on every file (not dir).
-        /// **filter** is only applied to the children of **start**.
-        /// 
-        /// ***WARNING***: Can return symlink. Symlinks should be made into Conflict error.
-        fn fs_bfs(start: PathBuf, filter: impl FnMut(&PathBuf) -> bool) -> impl Iterator<Item = PathBuf> {
-            let mut iter = vec![];
-            let mut queue = VecDeque::new();
-            // Note: start can be a symlink that points to a directory
-            if !start.is_dir() {
-                // iterator is empty if is file
-                return iter.into_iter();
-            }
-            // Step 1: Enqueue the root (Don't, just its children).
-            queue.extend(read_dir(start).filter(filter));
-
-            // Step 2: Get next from queue.
-            while let Some(path) = queue.pop_front() {
-                let meta = path.metadata().expect("Can't get metadata of game file");
-                // Step 3: Do something with it.
-                if meta.is_symlink() || meta.is_file() {
-                    iter.push(path)
-                }
-                // Step 4: Enqueue its children.
-                else if meta.is_dir() {
-                    queue.extend(read_dir(path))
-                }
-            }
-
-            iter.into_iter()
-        }
-
         // Add non-platformed files first.
-        for path in fs_bfs(self.path(), |path| {
+        for path in FsBfs::new_skip_entries(&self.path(), |path| {
             // Dont add the platform folders, and exclude game metadata
             let name = path.file_name().unwrap().to_string_lossy().to_string();
             !name.starts_with(PLATFORM_PREFIX)
             && name != INFO_FILE_NAME
             && !name.starts_with(THUMB_NAME)
             && !name.to_lowercase().starts_with("readme")
-        }) {
+        }).expect("Can't read game directory entries") {
             // Symlinks inside game directory are not allowed.
             if path.is_symlink() {
                 return Err(Conflict::Symlink(path));
@@ -242,7 +254,7 @@ impl GameInfo {
         
         // Then platformed files, and check for conflict
         for (dir, plat, arch) in self.plat_dirs() {
-            for path in fs_bfs(dir.path(), |_| true) {
+            for path in FsBfs::new(&dir.path()).expect("Can't read game platformed directory entries") {
                 // ./target/games-files/{game}/{file...}
                 let file_path = target_path.join(path.strip_prefix(self.path().join(dir.file_name())).unwrap());
                 // Check file-directory conflicts
