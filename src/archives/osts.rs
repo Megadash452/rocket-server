@@ -95,6 +95,7 @@ pub enum AlbumReadError {
     #[error("Can only have either \"artist\" or \"artists\" fields")]
     ArtistFields
 }
+impl_error_response!(AlbumReadError);
 
 
 #[derive(PartialEq, Eq)]
@@ -240,11 +241,12 @@ pub enum SongReadError {
     Command(io::Error),
     #[error("audio-tag.py exited with error: {0}")]
     AudioTag(String),
-    #[error("Could not parse output: {0:?}")]
+    #[error("Could not parse JSON: {0:?}")]
     Json(serde_json::Error),
     #[error("Output does not contain Song's length")]
     NoLength
 }
+impl_error_response!(SongReadError);
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum SongCover {
@@ -264,28 +266,18 @@ fn albums(user: Option<auth::User>) -> Html<TextStream![String]> {
 }
 
 #[get("/albums/<album_dir_name>")]
-fn view_album(user: Option<auth::User>, album_dir_name: String) -> Result<Html<TextStream![String]>, String> {
-    let album = match AlbumInfo::read_dir(&ALBUMS_PATH.join(album_dir_name)) {
-        Ok(info) => info,
-        Err(error) => return Err(error.to_string())
-    };
-
+fn view_album(user: Option<auth::User>, album_dir_name: String) -> Result<Html<TextStream![String]>, AlbumReadError> {
     Ok(Html(TextStream(render_component::<components::Album>(components::AlbumProps {
         user: user.into(),
-        album
+        album: AlbumInfo::read_dir(&ALBUMS_PATH.join(album_dir_name))?
     }))))
 }
 
 #[get("/albums/<album_dir_name>/<song_file_name>", format = "text/html")]
-fn view_song(user: Option<auth::User>, album_dir_name: String, song_file_name: String) -> Result<Html<TextStream![String]>, String> {
-    let song = match SongInfo::read_file(&ALBUMS_PATH.join(album_dir_name).join(song_file_name)) {
-        Ok(info) => info,
-        Err(error) => return Err(error.to_string())
-    };
-
+fn view_song(user: Option<auth::User>, album_dir_name: String, song_file_name: String) -> Result<Html<TextStream![String]>, SongReadError> {
     Ok(Html(TextStream(render_component::<components::Song>(components::SongProps {
         user: user.into(),
-        song
+        song: SongInfo::read_file(&ALBUMS_PATH.join(album_dir_name).join(song_file_name))?
     }))))
 }
 #[get("/albums/<album_dir_name>/<song_file_name>", format = "audio/webm", rank = 1)]

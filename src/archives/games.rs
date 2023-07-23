@@ -6,8 +6,8 @@ use std::{
 use nonempty::NonEmpty;
 use serde::{Serialize, Deserialize};
 use thiserror::Error;
-use super::*;
 use crate::components::games as components;
+use super::*;
 
 pub static GAMES_PATH: Lazy<PathBuf> = Lazy::new(|| PathBuf::from("./routes/games/"));
 pub static PLATFORM_PREFIX: &str = "plat-";
@@ -346,6 +346,7 @@ pub enum GameReadError {
     #[error("Game has no thumbnail image")]
     NoThumbnail
 }
+impl_error_response!(GameReadError);
 
 
 #[get("/")]
@@ -353,15 +354,14 @@ fn index(user: Option<auth::User>) -> Html<TextStream![String]> {
     Html(TextStream(render_component::<components::GamesBrowser>(user.into())))
 }
 #[get("/<game>", rank=1)]
-fn game(user: Option<auth::User>, game: String) -> Result<Html<TextStream![String]>, String> {
-    let game = GameInfo::read_dir(&GAMES_PATH.join(game))
-        .map_err(|err| err.to_string())?;
+fn game(user: Option<auth::User>, game: String) -> Result<Html<TextStream![String]>, GameReadError> {
     Ok(Html(TextStream(render_component::<components::Game>(components::GameProps {
         user: user.into(),
-        game
+        game: GameInfo::read_dir(&GAMES_PATH.join(game))?
     }))))
 }
 
+/// GET path is done this way because `/<game>/<file..> seems to precede [`crate::sass::serve_css`].
 #[get("/<game>/<first>/<rest..>")]
 fn file(game: String, first: String, rest: PathBuf) -> io::Result<std::fs::File> {
     if rest.as_os_str().is_empty() {

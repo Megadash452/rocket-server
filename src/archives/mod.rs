@@ -134,3 +134,18 @@ macro_rules! impl_ord {
         }
     };
 }
+
+/// TODO: should be a procedural macro that uses a variant's response and adds it to the body with the error.to_string()
+#[macro_export]
+macro_rules! impl_error_response {
+    ($st:path) => {
+        impl<'r> ::rocket::response::Responder<'r, 'static> for $st {
+            fn respond_to(self, req: &'r ::rocket::request::Request<'_>) -> ::rocket::response::Result<'static> {
+                // String::respond_to() never fails.
+                let mut response = self.to_string().respond_to(req).unwrap();
+                response.set_status(::rocket::http::Status::InternalServerError);
+                Ok(response)
+            }
+        }
+    }
+}
