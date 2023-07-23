@@ -85,9 +85,19 @@ def iter_args(args: list[str], flag_handler = None, option_handler = None):
         i += 1
 
 def do_per_file(paths: list[Path], handler, *args):
-    if len(paths) == 1 and (file_path := paths[0]).is_file():
-        # When only handling one file, set exit code Success/Error
-        exit(handler(paths[0], *args))
+    if len(paths) == 1:
+        # Only set exit code Success/Error when dealing with only 1 file
+        file_path = paths[0]
+        if file_path.exists() and file_path.is_file():
+            exit(handler(paths[0], *args))
+        elif not file_path.exists():
+            # Trying to open a non-existing file will yield OsError
+            try:
+                open(file_path)
+            except OSError as err:
+                print(err, file=sys.stderr)
+                exit(err.errno)
+            
 
     for i, path in enumerate(paths):
         if path.is_dir():
