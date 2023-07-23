@@ -1,6 +1,7 @@
 use std::path::{PathBuf, Path};
 use std::process::Command;
 use nonempty::NonEmpty;
+use rocket::Either;
 use yew::prelude::*;
 use crate::helpers::{display_separated, command_output};
 use crate::archives::{ Url, games::{GameInfo, PlatFile, GAMES_PATH, GameFile}};
@@ -85,13 +86,21 @@ pub fn Game(props: &GameProps) -> Html {
                         }
                     </div>
                 </div>
-                <div id="game-download">
-                    if let Some(files) = props.game.binaries() {{
-                        plat_file("Download", files)
-                    }} else {{
-                        "No Downloads available"
-                    }}
-                </div>
+                <div id="game-download">{
+                    match props.game.binaries() {
+                        Some(Either::Left(file)) => html! {
+                            <a href={ Url::from(file) } class="horizontal-wrapper">
+                                <Icon name="file"/>
+                                <span class="name">{ "Download" }</span>
+                                <div class="download single">
+                                    <div class="icon-wrapper"><Icon name="download"/></div>
+                                </div>
+                            </a>
+                        },
+                        Some(Either::Right(files)) => plat_file("Download", files),
+                        None => html! { "No Downloads available" }
+                    }
+                }</div>
             </div>
             <div id="content">
                 { readme(&props.game.path()) }

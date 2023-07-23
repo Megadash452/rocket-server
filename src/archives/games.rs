@@ -4,6 +4,7 @@ use std::{
     io::{Read, Write}
 };
 use nonempty::NonEmpty;
+use rocket::Either;
 use serde::{Serialize, Deserialize};
 use thiserror::Error;
 use crate::components::games as components;
@@ -124,11 +125,12 @@ impl Iterator for FsBfs {
             // Step 4: Enqueue its children.
             if meta.is_dir() {
                 self.queue.extend(Self::read_dir(&path).unwrap())
+            } else {
+                return Some(path);
             }
-            Some(path)
-        } else {
-            None
         }
+
+        None
     }
 }
 
@@ -172,22 +174,33 @@ impl GameInfo {
     }
     
     /// Gets the paths of the game's binary for each platform.
+    /// 
+    /// The game's binary could be either a *platform independent* file, or multiple *platform dependent* files.
     /// Returns [`None`] if no file exists with the same base-name as the game's directory.
-    pub fn binaries(&self) -> Option<NonEmpty<PlatFile>> {
-        // Search the directories that have files specific to a platform (e.g. Windows and Linux)
-        NonEmpty::collect(
-            self.plat_dirs()
-                .filter_map(|(dir, plat, arch)|{
-                    let file = dir.path().read_dir()
-                        .expect("can't read platform dir")
-                        .filter_map(Result::ok)
-                        .filter(|entry| entry.metadata().ok().is_some_and(|m| m.is_file()))
-                        // The game file should have the same base name as the game's directory.
-                        .filter(|entry| entry.path().file_prefix().is_some_and(|base_name| base_name.to_string_lossy() == self.dir_name.as_str()))
-                        .next()?;
-                    Some(PlatFile { path: file.path(), plat, arch })
-                })
-        )
+    pub fn binaries(&self) -> Option<Either<PathBuf, NonEmpty<PlatFile>>> {
+        fn find_bin(dir: &Path, start: &str) -> Option<PathBuf> {
+            dir.read_dir()
+                .expect("can't read platform dir")
+                .filter_map(Result::ok)
+                .filter(|entry| entry.metadata().ok().is_some_and(|m| m.is_file()))
+                // The game file should have the same base name as the game's directory.
+                .filter(|entry| entry.path().file_prefix().is_some_and(|base_name| base_name.to_string_lossy() == start))
+                .map(|entry| entry.path())
+                .next()
+        }
+
+        find_bin(&self.path(), &self.dir_name)
+            .map(|file| Either::Left(file))
+            .or_else(||
+                NonEmpty::collect(
+                    self.plat_dirs()
+                        .filter_map(|(dir, plat, arch)|
+                            find_bin(&dir.path(), &self.dir_name)
+                                .map(|path| PlatFile { path, plat, arch })
+                        )
+                )
+                .map(|files| Either::Right(files))
+            )
     }
 
     /// TODO: doc
