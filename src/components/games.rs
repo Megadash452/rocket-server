@@ -2,11 +2,9 @@ use std::path::{PathBuf, Path};
 use std::process::Command;
 use nonempty::NonEmpty;
 use yew::prelude::*;
-use crate::archives::Url;
-use crate::components::{load_svg, text_file};
 use crate::helpers::{display_separated, command_output};
-use crate::archives::games::{GameInfo, PlatFile, GAMES_PATH, GameFile};
-use super::{Document, UserInfo, item_error};
+use crate::archives::{ Url, games::{GameInfo, PlatFile, GAMES_PATH, GameFile}};
+use super::{Document, Icon, UserInfo, item_error, text_file};
 
 
 #[function_component]
@@ -98,7 +96,7 @@ pub fn Game(props: &GameProps) -> Html {
             <div id="content">
                 { readme(&props.game.path()) }
                 { match props.game.files() {
-                    // TOOD: sort files before directories
+                    // TODO: sort files before directories
                     Ok(files) => files.map(fs_content).collect::<Html>(),
                     Err(conflict) => item_error("Game files".to_string(), conflict.to_string())
                 } }
@@ -112,7 +110,7 @@ fn readme(path: &Path) -> Option<Html> {
         .pop()
         .map(|path| html! {
             <details open=true class="readme">
-                <summary><span>{ load_svg("info") }{ "README" }<a class="download" href={ Url::from(&path).to_string() }>{ load_svg("download") }</a></span></summary>
+                <summary><span><Icon name="info"/>{ "README" }<a class="download" href={ Url::from(&path).to_string() }><Icon name="download"/></a></span></summary>
                 { text_file(&path) }
             </details>
         })
@@ -147,7 +145,7 @@ fn fs_content(file: GameFile) -> Html {
         <li class="item">{ match file {
             GameFile::Dir(path) => html! {
                 <details class="dir">
-                    <summary>{ load_svg("folder") }{ name }</summary>
+                    <summary><Icon name="folder"/>{ name }</summary>
                     {GameFile::read_dir(&path)
                         .map(fs_content)
                         .collect::<Html>()
@@ -158,12 +156,12 @@ fn fs_content(file: GameFile) -> Html {
                 if is_mime(&path, "text/plain") {
                     html! {
                         <details class="file text">
-                            <summary>{ load_svg("text-file") }{ &name }</summary>
+                            <summary><Icon name="text-file"/>{ &name }</summary>
                             { text_file(&path) }
                         </details>
                     }
                 } else {
-                    html! { <a class="file" href={ Url::from(path).to_string() }>{ load_svg("file") }{ &name }</a> }
+                    html! { <a class="file" href={ Url::from(path) }><Icon name="file"/>{ &name }</a> }
                 },
             // TODO: show content if file is text/plain, with tabs to switch between platforms
             GameFile::PlatFile(files) => plat_file(&name, files)
@@ -174,22 +172,21 @@ fn fs_content(file: GameFile) -> Html {
 /// Render a file that exists for multiple platforms.
 fn plat_file(name: &str, files: NonEmpty<PlatFile>) -> Html {
     fn anchor(file: PlatFile) -> Html {
-        html! { <a href={ Url::from(file.path).to_string() } platform={file.plat.clone()} arch={file.arch.clone()}>{ load_svg(&file.plat) }</a> }
+        html! { <a href={ Url::from(file.path) } platform={ file.plat.clone() } arch={ file.arch }><Icon name={file.plat}/></a> }
     }
-    let download_svg = load_svg("download");
 
     html! {<>
-        { load_svg("file") }
+        <Icon name="file"/>
         <span class="name">{ name }</span>
 
         if files.len() == 1 {
             <div class="download single">
-                <div class="icon-wrapper">{ download_svg }</div>
+                <div class="icon-wrapper"><Icon name="download"/></div>
                 { anchor(files.head) }
             </div>
         } else {
             <div class="download">
-                <span class="icon-wrapper">{ download_svg }</span>
+                <span class="icon-wrapper"><Icon name="download"/></span>
                 <span class="platforms">{
                     files.into_iter()
                         .map(anchor)

@@ -1,7 +1,7 @@
 pub mod osts;
 pub mod games;
 
-use std::{path::Path, fs::DirEntry, fmt::Display};
+use std::{path::Path, fs::DirEntry, fmt::Display, rc::Rc};
 use rocket::{
     Route,
     response::content::RawHtml as Html
@@ -12,13 +12,35 @@ pub static INFO_FILE_NAME: &str = "info.json";
 pub static THUMB_NAME: &str = "thumbnail";
 
 
-/// Represents the URL of a file in `./routes` that is given to the client.
+/// Represents the URL of a file or resource in `./routes` that is given to the client.
 #[derive(Debug)]
 pub struct Url(PathBuf);
 impl Url {
-    /// Converts a **path** (absolute or relative) into a [`Url`].
-    /// Removes all components of the Path *up to and including* the `routes` root.
-    pub fn new(path: impl AsRef<Path>) -> Self {
+    /// To get an [`Url`] from a [`Path`], use the `From<impl AsRef<Path>>` implementation.
+    pub fn new(url: &str) -> Self {
+        Self(PathBuf::from(url))
+    }
+    /// Like [`Path::join()`].
+    #[inline]
+    pub fn join(self, path: impl AsRef<Path>) -> Self {
+        Self(self.0.join(path))
+    }
+}
+impl yew::html::IntoPropValue<Option<yew::AttrValue>> for Url {
+    #[inline]
+    fn into_prop_value(self) -> Option<yew::AttrValue> {
+        (&self).into_prop_value()
+    }
+}
+impl yew::html::IntoPropValue<Option<yew::AttrValue>> for &Url {
+    fn into_prop_value(self) -> Option<yew::AttrValue> {
+        Some(yew::AttrValue::Rc(Rc::from(self.to_string())))
+    }
+}
+impl<P: AsRef<Path>> From<P> for Url {
+    /// Converts a **path** (absolute or relative) into a [`Url`] where the path is relative to `./routes`.
+    /// Removes all components of the Path *up to and including* the `routes` component to make it relative to `./routes`.
+    fn from(path: P) -> Self {
         use std::path::Component;
         Self (
             Some(Component::RootDir).into_iter().chain(
@@ -28,17 +50,6 @@ impl Url {
             )
             .collect::<PathBuf>()
         )
-    }
-    /// Like [`Path::join()`].
-    #[inline]
-    pub fn join(self, path: impl AsRef<Path>) -> Self {
-        Self(self.0.join(path))
-    }
-}
-impl<P: AsRef<Path>> From<P> for Url {
-    #[inline]
-    fn from(path: P) -> Self {
-        Self::new(path)
     }
 }
 impl Display for Url {
@@ -110,7 +121,7 @@ pub trait FromFile: Sized {
 
 #[macro_export]
 macro_rules! impl_ord {
-    ($st:path, $field:tt) => {
+    ($st:path, $field:ident) => {
         impl PartialOrd for $st {
             fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
                 self.$field.partial_cmp(&other.$field)

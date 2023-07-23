@@ -101,8 +101,7 @@ pub enum AlbumReadError {
 pub struct SongInfo {
     pub title: String,
     pub cover: SongCover,
-    /// Non-empty array.
-    pub artists: Option<Vec<String>>,
+    pub artists: Option<NonEmpty<String>>,
     pub release_year: Option<u32>,
     pub track_num: Option<u32>,
     pub file_name: String,
@@ -203,9 +202,10 @@ impl FromFile for SongInfo {
             },
             artists: match json.remove("artist") {
                 Some(Value::String(artist)) => Some(
-                    artist.split(',')
-                        .map(|artist| artist.trim().to_string())
-                        .collect()
+                    NonEmpty::collect(
+                        artist.split(',').map(|artist| artist.trim().to_string())
+                    )
+                    .unwrap_or(NonEmpty::new(artist))
                 ),
                 _ => None
             },
@@ -276,7 +276,7 @@ fn view_album(user: Option<auth::User>, album_dir_name: String) -> Result<Html<T
     }))))
 }
 
-#[get("/albums/<album_dir_name>/<song_file_name>")]
+#[get("/albums/<album_dir_name>/<song_file_name>", format = "text/html")]
 fn view_song(user: Option<auth::User>, album_dir_name: String, song_file_name: String) -> Result<Html<TextStream![String]>, String> {
     let song = match SongInfo::read_file(&ALBUMS_PATH.join(album_dir_name).join(song_file_name)) {
         Ok(info) => info,
@@ -288,7 +288,11 @@ fn view_song(user: Option<auth::User>, album_dir_name: String, song_file_name: S
         song
     }))))
 }
+#[get("/albums/<album_dir_name>/<song_file_name>", format = "audio/webm", rank = 1)]
+async fn song_file(album_dir_name: String, song_file_name: String) -> io::Result<File> {
+    File::open(ALBUMS_PATH.join(album_dir_name).join(song_file_name)).await
+}
 
 pub fn routes() -> Vec<Route> {
-    routes![index, albums, view_album, view_song]
+    routes![index, albums, view_album, view_song, song_file]
 }

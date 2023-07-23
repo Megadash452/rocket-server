@@ -156,16 +156,6 @@ fn find_pfp(path: &Option<PathBuf>) -> Html {
     Html::from_html_unchecked(yew::AttrValue::from(DEFAULT_PFP.clone()))
 }
 
-pub fn load_svg(name: impl AsRef<str>) -> Html {
-    // TODO: use cache
-    let data = std::fs::read(ICONS_PATH.join(name.as_ref()).with_extension("svg")).ok();
-
-    Html::from_html_unchecked(yew::AttrValue::from(match data {
-        Some(svg) => crate::helpers::command_output(svg),
-        None => r#"<img alt="SVG"/>"#.to_string()
-    }))
-}
-
 fn text_file(path: &Path) -> Html {
     let content = String::from_utf8_lossy(
         &std::fs::read(path).expect("Could not read file")
@@ -182,13 +172,37 @@ fn text_file(path: &Path) -> Html {
 fn item_error(obj_name: String, error: String) -> Html {
     html!{
         <li class="error horizontal-wrapper">
-            { load_svg("warning") }
+            <Icon name="warning"/>
             <div class="vertical-wrapper">
                 <span class="name">{obj_name}</span>
                 <span class="error">{error}</span>
             </div>
         </li>
     }
+}
+
+// pub fn load_svg(name: impl AsRef<str>) -> Html {
+//     // TODO: use cache
+//     let data = std::fs::read(ICONS_PATH.join(name.as_ref()).with_extension("svg")).ok();
+
+//     Html::from_html_unchecked(yew::AttrValue::from(match data {
+//         Some(svg) => crate::helpers::command_output(svg),
+//         None => r#"<img alt="SVG"/>"#.to_string()
+//     }))
+// }
+#[derive(Properties, PartialEq, Eq)]
+pub struct IconProps {
+    name: yew::AttrValue
+}
+#[function_component]
+pub fn Icon(props: &IconProps) -> Html {
+    // TODO: use cache
+    let data = std::fs::read(ICONS_PATH.join(props.name.as_str()).with_extension("svg")).ok();
+
+    Html::from_html_unchecked(yew::AttrValue::from(match data {
+        Some(svg) => crate::helpers::command_output(svg),
+        None => r#"<img alt="SVG"/>"#.to_string()
+    }))
 }
 
 

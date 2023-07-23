@@ -1,15 +1,15 @@
 use std::path::PathBuf;
 use yew::prelude::*;
-use super::{Document, UserInfo, load_svg, item_error};
+use super::{Document, UserInfo, Icon, item_error};
 use crate::helpers::display_separated;
-use crate::archives::osts::{AlbumInfo, SongInfo, SongCover, ALBUMS_PATH};
+use crate::archives::{ Url, osts::{AlbumInfo, SongInfo, SongCover, ALBUMS_PATH}};
 pub use crate::components::UserInfo as AlbumBrowserProps;
 
 
 #[function_component]
 pub fn AlbumBrowser(props: &UserInfo) -> Html {
     html! {
-        <Document title="Albums" header={props.clone()}>
+        <Document title="Albums" header={ props.clone() }>
             <link rel="stylesheet" href="/osts/style.css"/>
             <h1>{ "Soundtracks" }</h1>
             <ul id="albums">{{
@@ -27,7 +27,7 @@ pub fn AlbumBrowser(props: &UserInfo) -> Html {
 fn album_browser_item(album: AlbumInfo) -> Html {
     html! {
         <li class="item album-item horizontal-wrapper">
-            <a class="horizontal-wrapper" href={ PathBuf::from("/osts/albums/").join(album.dir_name).display().to_string() }>
+            <a class="horizontal-wrapper" href={ Url::new("/osts/albums/").join(album.dir_name) }>
                 <div class="thumbnail">{ album_cover(&album.cover_path) }</div>
 
                 <div class="title-wrapper">
@@ -63,7 +63,7 @@ pub struct AlbumProps {
 #[function_component]
 pub fn Album(props: &AlbumProps) -> Html {
     html! {
-        <Document title={ props.album.name.clone() } header={props.user.clone()}>
+        <Document title={ props.album.name.clone() } header={ props.user.clone() }>
             <link rel="stylesheet" href="/osts/style.css"/>
             <h1>{ "Soundtracks" }</h1>
 
@@ -73,10 +73,9 @@ pub fn Album(props: &AlbumProps) -> Html {
                 <h3 id="artists">{"By "}<span class="artists">{ display_separated(artists, ", ") }</span></h3>
             }
             <h4 id="more">
-                { match props.album.release_year {
-                    Some(year) => html!{ <span id="release-year" class="release-year">{ "Released on " }<span class="year">{ year }</span></span> },
-                    None => html!{}
-                } }
+                if let Some(year) = props.album.release_year {
+                    <span id="release-year" class="release-year">{ "Released on " }<span class="year">{ year }</span></span>
+                }
                 <span id="album-size" class="album-size"><span class="size">{ props.album.size }</span>{ " Songs" }</span>
                 if !props.album.complete {
                     <span class="incomplete">{ "Incomplete" }</span>
@@ -84,11 +83,13 @@ pub fn Album(props: &AlbumProps) -> Html {
                 if let Some(remixes) = &props.album.remixes {
                     <div>
                         <span>{"Remixes: "}</span>
-                        <ul id="remixes">
-                            { remixes.iter().map(|dir_name| html!{
-                                <li><a href={ format!("/osts/albums/{dir_name}") }>{ dir_name }</a></li>
-                            }).collect::<Vec<_>>() }
-                        </ul>
+                        <ul id="remixes">{
+                            remixes.iter()
+                                .map(|dir_name| html!{
+                                    <li><a href={ Url::new("/osts/albums").join(dir_name) }>{ dir_name }</a></li>
+                                })
+                                .collect::<Html>()
+                        }</ul>
                     </div>
                 }
             </h4>
@@ -156,14 +157,13 @@ pub fn Song(props: &SongProps) -> Html {
                 if let Some(num) = props.song.track_num {
                     <span class="track-number">{ "#" }<span class="num">{ num }</span></span>
                 }
-                { match props.song.release_year {
-                    Some(year) => html!{ <span id="release-year" class="release-year">{ "Released on " }<span class="year">{ year }</span></span> },
-                    None => html!{}
-                } }
+                if let Some(year) = props.song.release_year {
+                    <span id="release-year" class="release-year">{ "Released on " }<span class="year">{ year }</span></span>
+                }
                 <span id="song-length" class="song-length"><span class="length">{ &props.song.length }</span></span>
             </h4>
             <audio controls=true>
-                <source src={PathBuf::from("/files/routes/osts/albums").join(&props.song.album_dir_name).join(&props.song.file_name).display().to_string()}/>
+                <source src={ Url::new("/osts/albums").join(&props.song.album_dir_name).join(&props.song.file_name) }/>
             </audio>
         </Document> 
     }
@@ -172,10 +172,8 @@ pub fn Song(props: &SongProps) -> Html {
 
 fn album_cover(path: &Option<PathBuf>) -> Html {
     match path {
-        Some(path) => html! {
-            <img src={ PathBuf::from("/files/").join(path).display().to_string() }/>
-        },
-        None => load_svg("default-album")
+        Some(path) => html! { <img src={ Url::new("/files").join(path) }/> },
+        None => html! { <Icon name="default-album"/> }
     }
 }
 fn song_cover(song: &SongInfo) -> Html {
@@ -183,8 +181,8 @@ fn song_cover(song: &SongInfo) -> Html {
         // Song has its own cover
         (SongCover::Some(ref path), _)
         // Song uses Album's cover
-        | (SongCover::UseAlbum, Some(ref path)) => html!{ <img src={ PathBuf::from("/files/").join(path).display().to_string() }/> },
+        | (SongCover::UseAlbum, Some(ref path)) => html!{ <img src={ Url::new("/files").join(path) }/> },
         // No cover exists
-        _ => load_svg("default-song")
+        _ => html! { <Icon name="default-song"/> }
     }
 }
