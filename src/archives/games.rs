@@ -25,8 +25,13 @@ pub struct PlatFile {
 
 #[derive(Debug)]
 pub enum GameFile {
+    /// Holds the **"virtual"** path of the directory.
+    /// Format: `"./target/games-files/{game}/{file..}"`.
+    /// Use [`Self::read_dir()`] with this **path** to get [`Self::NormalFile`]s or [`Self::PlatFile`]s of this subdirectory.
     Dir(PathBuf),
+    /// Holds the **"real"** path of the file.
     NormalFile(PathBuf),
+    /// Holds the **"real"** path of the files.
     PlatFile(NonEmpty<PlatFile>)
 }
 impl GameFile {
@@ -38,7 +43,7 @@ impl GameFile {
             let content = fs::read_to_string(entry.path())?;
 
             if content.starts_with(GameInfo::NORMAL_FILE_CONTENT) {
-                Ok(GameFile::NormalFile(entry.path()))
+                Ok(GameFile::NormalFile(GAMES_PATH.join(entry.path().strip_prefix(GameInfo::VIRTUAL_FILES_DIR).unwrap())))
             } else {
                 Ok(GameFile::PlatFile(NonEmpty::collect(
                     content.split('\n')
@@ -98,10 +103,10 @@ impl FsBfs {
         queue.extend(dir_entries);
         Self { queue }
     }
-    /// Returns `Error` if failed to read directory entries.
-    pub fn new(start: &Path) -> io::Result<Self> {
-        Ok(Self::_new(Self::read_dir(start)?))
-    }
+    // /// Returns `Error` if failed to read directory entries.
+    // pub fn new(start: &Path) -> io::Result<Self> {
+    //     Ok(Self::_new(Self::read_dir(start)?))
+    // }
     /// Like [`Self::new()`] but filters out files that are direct children (i.e. does not fileter subdirectories) of **start**.
     pub fn new_skip_entries(start: &Path, filter: impl FnMut(&PathBuf) -> bool) -> io::Result<Self> {
         Ok(Self::_new(Self::read_dir(start)?.filter(filter)))
@@ -154,6 +159,7 @@ pub struct GameInfo {
 }
 impl GameInfo {
     const NORMAL_FILE_CONTENT: &str = "normal";
+    const VIRTUAL_FILES_DIR: &str = "./target/games-files/";
 
     pub fn path(&self) -> PathBuf {
         GAMES_PATH.join(&self.dir_name)
@@ -203,8 +209,8 @@ impl GameInfo {
             )
     }
 
-    /// TODO: doc
-    /// Vec is the content of all the files that immediately belong to ./target/games-files/{game}/
+    /// Get the files in the game directory in an useful format to group [`GameFile`]s that are *platform dependent* into one file.
+    /// Excludes the game [binaries](Self::binaries()), the README, and info and thumbnail files.
     pub fn files(&self) -> Result<impl Iterator<Item = GameFile>, Conflict> {
         Ok(self.create_file_locations()?
             .read_dir()
@@ -215,11 +221,11 @@ impl GameInfo {
         )
     }
 
-    /// Create files and directories in `"./target/games-files/{game}/"` for easier iteration in [`Self::files()`].
+    /// Create files and directories in `"{Self::VIRTUAL_FILES_DIR}/{game}/"` for easier iteration in [`Self::files()`].
     /// Writes the information of each file in the respective directory, using **Breadth-First** traversal of the filesystem.
     /// Returns the path of the directory written to.
     /// 
-    /// Format of files in `"./target/games-files/{game}/"`:
+    /// Format of files in *virtual directory*:
     ///  - A file with a single line `normal` is not for a platform (i.e. the actual file is not inside a folder like "plat-linux").
     ///  - A file with a *line-separated* list of [`PlatFile`]s in *JSON* format.
     /// 
@@ -230,11 +236,12 @@ impl GameInfo {
     /// Doesn't resolve symlinks, because that't not necessary right now.
     /// Panics if can't write there.
     fn create_file_locations(&self) -> Result<PathBuf, Conflict> {
-        let target_path = PathBuf::from(format!("./target/games-files/{}", self.dir_name));
+        let target_path = PathBuf::from(Self::VIRTUAL_FILES_DIR).join(&self.dir_name);
         // TODO: return if no files have changed in self.path() since last call.
         // if target_path.exists() {
         //     return;
         // }
+        let bins = self.binaries();
 
         // Remove target dir. if doesnt exist, its better (hence drop)
         drop(fs::remove_dir_all(&target_path));
@@ -245,8 +252,15 @@ impl GameInfo {
             let name = path.file_name().unwrap().to_string_lossy().to_string();
             !name.starts_with(PLATFORM_PREFIX)
             && name != INFO_FILE_NAME
-            && !name.starts_with(THUMB_NAME)
+            && name != self.thumbnail_file_name
             && !name.to_lowercase().starts_with("readme")
+            // Exclude the game binaries
+            && match &bins {
+                Some(Either::Left(path)) 
+                | Some(Either::Right(NonEmpty { head: PlatFile { path, .. }, .. }))
+                    => path.file_name().unwrap().to_string_lossy() != name,
+                None => true
+            }
         }).expect("Can't read game directory entries") {
             // Symlinks inside game directory are not allowed.
             if path.is_symlink() {
@@ -267,7 +281,15 @@ impl GameInfo {
         
         // Then platformed files, and check for conflict
         for (dir, plat, arch) in self.plat_dirs() {
-            for path in FsBfs::new(&dir.path()).expect("Can't read game platformed directory entries") {
+            for path in FsBfs::new_skip_entries(&dir.path(), |entry|
+                // Exclude the game binaries
+                match &bins {
+                    Some(Either::Left(path)) 
+                    | Some(Either::Right(NonEmpty { head: PlatFile { path, .. }, .. }))
+                        => path.file_name().unwrap().to_string_lossy() != entry.file_name().unwrap().to_string_lossy(),
+                    None => true
+                }
+            ).expect("Can't read game platformed directory entries") {
                 // ./target/games-files/{game}/{file...}
                 let file_path = target_path.join(path.strip_prefix(self.path().join(dir.file_name())).unwrap());
                 // Check file-directory conflicts
