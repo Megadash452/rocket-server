@@ -2,7 +2,7 @@ pub mod authenticate;
 pub mod osts;
 pub mod games;
 
-use std::{path::{PathBuf, Path}, process::Command};
+use std::{path::{PathBuf, Path}, process::Command, collections::HashMap, sync::RwLock};
 use once_cell::sync::Lazy;
 use rocket::{
     // tokio,
@@ -192,17 +192,35 @@ fn item_error(obj_name: String, error: String) -> Html {
 // }
 #[derive(Properties, PartialEq, Eq)]
 pub struct IconProps {
-    name: yew::AttrValue
+    name: String
 }
 #[function_component]
 pub fn Icon(props: &IconProps) -> Html {
-    // TODO: use cache
-    let data = std::fs::read(ICONS_PATH.join(props.name.as_str()).with_extension("svg")).ok();
+    static CACHE: Lazy<RwLock<HashMap<String, String>>> = Lazy::new(|| RwLock::new(HashMap::new()));
 
-    Html::from_html_unchecked(yew::AttrValue::from(match data {
-        Some(svg) => crate::helpers::command_output(svg),
-        None => r#"<img alt="SVG"/>"#.to_string()
-    }))
+    let read_lock = CACHE.read().unwrap();
+
+    if let Some(val) = read_lock.get(props.name.as_str()) {
+        // String as already checked when it was inserted
+        Html::from_html_unchecked(yew::AttrValue::from(val.clone()))
+    } else {
+        drop(read_lock);
+
+        let data = std::fs::read(ICONS_PATH.join(props.name.as_str()).with_extension("svg"))
+            .ok()
+            .map(|data| crate::helpers::command_output(data));
+        
+        Html::from_html_unchecked(match data {
+            Some(svg) => {
+                if svg.contains("script") {
+                    panic!("This \"icon\" is acting sus!! (found script)")
+                }
+                CACHE.write().unwrap().insert(props.name.as_str().to_string(), svg.clone());
+                yew::AttrValue::from(svg)
+            },
+            None => yew::AttrValue::from(r#"<img alt="SVG"/>"#)
+        })
+    }
 }
 
 
